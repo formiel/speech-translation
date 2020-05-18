@@ -1,6 +1,8 @@
 pip install --user --no-cache-dir
 module load python/3.7.5 cuda/10.1.1 cudnn/7.6.5.32-cuda-10.1 nccl/2.6.4-1-cuda gcc/7.3.0 openmpi/4.0.2-cuda git/2.21.0
 
+
+
 #SBATCH --qos=qos_gpu-t4
 
 ## Installation of ESPNet in JZ

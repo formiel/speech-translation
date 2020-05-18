@@ -1,0 +1,9 @@
+egs/must_c/_NOTES.md
+egs/must_c/st_multilingual/cancel_jobs.sh
+egs/must_c/st_multilingual/run-cmd.sh
+egs/must_c/st_multilingual/run.slurm
+egs/must_c/st_multilingual/run100.slurm
+egs/must_c/st_multilingual/submit_sequential_jobs.sh
+egs/must_c/st_multilingual/test.py
+egs/must_c/st_multilingual/toto.sh
+*.DS_Store

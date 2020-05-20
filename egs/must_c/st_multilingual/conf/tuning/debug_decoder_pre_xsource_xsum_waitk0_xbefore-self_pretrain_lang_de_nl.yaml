@@ -19,10 +19,11 @@ lang-tok: decoder-pre
 cross-weight: 0.3
 cross-self: False
 cross-src: True
-cross-to-asr: False
+cross-to-asr: True
 cross-to-st: True
-cross-operator: concat
-wait-k-asr: 3
+cross-operator: sum
+cross-src-from: before-self
+wait-k-asr: 0
 
 # label smoothing
 lsm-weight: 0.1
@@ -33,8 +34,8 @@ maxlen-in: 512  # if input length  > maxlen-in, batchsize is automatically reduc
 maxlen-out: 150 # if output length > maxlen-out, batchsize is automatically reduced
 
 # saving interval
-report-interval-iters: 1000
-save-interval-iters: 1000
+report-interval-iters: 1
+save-interval-iters: 1
 n-iter-processes: 24
 
 # optimization related
@@ -43,8 +44,8 @@ opt: noam
 accum-grad: 2
 grad-clip: 5
 patience: 0
-epochs: 35  # longer version of "short" for SpecAugment: 30ep->50ep
-time-limit: 100
+epochs: 200  # longer version of "short" for SpecAugment: 30ep->50ep
+time-limit: 0.1
 dropout-rate: 0.1
 
 # transformer specific setting
@@ -59,4 +60,7 @@ transformer-init: pytorch
 
 # pre-training related
 enc-init-mods: encoder.embed,encoder.encoders,encoder.after_norm
-dec-init-mods: decoder.embed,decoder.decoders,decoder.after_norm,decoder.output_layer
+dec-init-mods: decoder.embed,decoder.decoders,decoder.after_norm,decoder.output_layer,decoder_asr.embed,decoder_asr.decoders,decoder_asr.after_norm,decoder_asr.output_layer
+
+enc-init: /gpfsscratch/rech/dbn/umz16dj/Experiments_espnet/exp/decoder_pre_1decoder_lang_de_nl/results/model.acc.best
+dec-init: /gpfsscratch/rech/dbn/umz16dj/Experiments_espnet/exp/decoder_pre_1decoder_lang_de_nl/results/model.acc.best

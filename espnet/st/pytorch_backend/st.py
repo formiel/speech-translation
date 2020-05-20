@@ -124,7 +124,7 @@ class BestValueTrigger(object):
 
         if self._best_value is None or self._compare(self._best_value, value):
             if self.verbose:
-                print(f'{self._key} improved from {self._best_value} to {value}')
+                logging.info(f'{self._key} improved from {self._best_value} to {value}')
             self._best_value = value
             return True
         return False
@@ -223,12 +223,12 @@ class TimeLimitTrigger(object):
                 trainer.snapshot_elapsed_times = np.zeros(1)
 
             est_elapsed_time = (time.time() - self.start_time + np.mean(trainer.snapshot_elapsed_times)) / 60
-            print(f'Estimated next epoch elapsed time {est_elapsed_time:.2f}min. Time limit: {self.time_limit:.2f}min.')
+            logging.info(f'Estimated next epoch elapsed time {est_elapsed_time:.2f}min. Time limit: {self.time_limit:.2f}min.')
             if est_elapsed_time < self.time_limit:
-                print('Continue training...')
+                logging.info('Continue training...')
                 return False
             else:
-                print('Time limit reached. Stop training.')
+                logging.info('Time limit reached. Stop training.')
                 return True
 
     def get_training_length(self):
@@ -304,17 +304,15 @@ def train(args):
         valid_jpaths = [os.path.join(args.valid_json, fname) for fname in sorted(os.listdir(args.valid_json)) if fname.endswith('.json')]
 
         all_langs = list(sorted(set([l for p in lang_pairs for l in p.split('-')])))
-        # args.langs_dict = {'<unk>': 1, '<s>': 2, '</s>': 3, '<pad>': 4, '<TRANS>': 5, '<RECOG>': 6, '<DELAY>': 7}
         args.langs_dict = {}
-        # offset = len(args.langs_dict)
-        offset = 2
+        offset = 2 # for <blank> and <unk>
         for i, lang in enumerate(all_langs):
             args.langs_dict[f'<2{lang}>'] = offset + i
 
-        logging.info(f'train_jpaths: {train_jpaths}')
-        logging.info(f'valid_jpaths: {valid_jpaths}')
-        logging.info(f'lang_pairs  : {lang_pairs}')
-        logging.info(f'langs_dict : {args.langs_dict}')
+        logging.info(f'| train_jpaths: {train_jpaths}')
+        logging.info(f'| valid_jpaths: {valid_jpaths}')
+        logging.info(f'| lang_pairs  : {lang_pairs}')
+        logging.info(f'| langs_dict : {args.langs_dict}')
     else:
         train_jpaths = [args.train_json]
         valid_jpaths = [args.valid_json]
@@ -343,11 +341,11 @@ def train(args):
     if args.enc_init is not None or args.dec_init is not None:
         logging.info('Loading pretrained ASR encoder and/or MT decoder ...')
         model = load_trained_modules(idim, odim, args, interface=STInterface)
-        logging.info(f'*** MODEL *** \n {model}')
+        logging.info(f'*** Model *** \n {model}')
     else:
         model_class = dynamic_import(args.model_module)
         model = model_class(idim, odim, args)
-        logging.info(f'*** MODEL *** \n {model}')
+        logging.info(f'*** Model *** \n {model}')
     assert isinstance(model, STInterface)
 
     subsampling_factor = model.subsample[0]

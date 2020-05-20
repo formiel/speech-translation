@@ -235,6 +235,10 @@ def get_parser(parser=None, required=True):
                         help='Operator in the cross attention module: whether to sum or concatenate self and cross attention.')
     parser.add_argument('--wait-k-asr', default=0, type=int,
                         help='st decoder waits asr for k steps.')
+    parser.add_argument('--cross-src-from', default='embedding', type=str, choices=['embedding', 'before-self', 'before-src', 'after-src'],
+                        help='Where to take key and value of the cross decoder.')
+    parser.add_argument('--cross-self-from', default='embedding', type=str, choices=['embedding', 'before-self'],
+                        help='Where to take key and value of the cross decoder.')    
 
     # Feature transform: Normalization
     parser.add_argument('--stats-file', type=str, default=None,

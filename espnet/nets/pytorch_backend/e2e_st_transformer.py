@@ -130,20 +130,25 @@ class E2E(STInterface, torch.nn.Module):
         self.asr_weight = getattr(args, "asr_weight", 0.0)
         self.do_asr = self.asr_weight > 0 and args.mtlalpha < 1
 
+        # cross-attention parameters
         self.cross_weight = getattr(args, "cross_weight", 0.0)
         self.cross_self = getattr(args, "cross_self", False)
         self.cross_src = getattr(args, "cross_src", False)
         self.cross_operator = getattr(args, "cross_operator", None)
-
         self.cross_to_asr = getattr(args, "cross_to_asr", False)
         self.cross_to_st = getattr(args, "cross_to_st", False)
         self.num_decoders = getattr(args, "num_decoders", 1)
         self.wait_k_asr = getattr(args, "wait_k_asr", 0)
+        self.cross_src_from = getattr(args, "cross_src_from", "embedding")
+        self.cross_self_from = getattr(args, "cross_self_from", "embedding")
 
         # one-to-many ST experiments
         self.one_to_many = getattr(args, "one_to_many", False)
         self.langs_dict = getattr(args, "langs_dict", None)
         self.lang_tok = getattr(args, "lang_tok", None)
+
+        self.normalize_before = getattr(args, "normalize_before", True)
+        logging.info(f'self.normalize_before = {self.normalize_before}')
 
         # Check parameters
         if self.cross_operator == 'sum' and self.cross_weight <= 0:
@@ -152,6 +157,8 @@ class E2E(STInterface, torch.nn.Module):
             assert self.do_asr
             assert self.cross_self or self.cross_src
         assert bool(self.cross_operator) == (self.do_asr and (self.cross_to_asr or self.cross_to_st))
+        if self.cross_src_from != "embedding" or self.cross_self_from != "embedding":
+            assert self.normalize_before
 
         logging.info("*** Cross attention parameters ***")
         if self.cross_to_asr:
@@ -162,8 +169,18 @@ class E2E(STInterface, torch.nn.Module):
             logging.info("| Cross at Self")
         if self.cross_src:
             logging.info("| Cross at Source")
-        logging.info(f'| Cross operator: {self.cross_operator}')
-        logging.info(f'| Cross sum weight: {self.cross_weight}')
+        if self.cross_to_asr or self.cross_to_st:
+            logging.info(f'| Cross operator: {self.cross_operator}')
+            logging.info(f'| Cross sum weight: {self.cross_weight}')
+            if self.cross_src:
+                logging.info(f'| Cross source from: {self.cross_src_from}')
+            if self.cross_self:
+                logging.info(f'| Cross self from: {self.cross_self_from}')
+        
+        if (self.cross_src_from != "embedding" and self.cross_src) and (not self.normalize_before):
+            logging.warning(f'WARNING: Resort to using self.cross_src_from == embedding for cross at source attention.')
+        if (self.cross_self_from != "embedding" and self.cross_self) and (not self.normalize_before):
+            logging.warning(f'WARNING: Resort to using self.cross_self_from == embedding for cross at self attention.')
 
         self.decoder = Decoder(
             odim=odim,
@@ -175,6 +192,7 @@ class E2E(STInterface, torch.nn.Module):
             positional_dropout_rate=args.dropout_rate,
             self_attention_dropout_rate=args.transformer_attn_dropout_rate,
             src_attention_dropout_rate=args.transformer_attn_dropout_rate,
+            normalize_before=self.normalize_before,
             cross_operator=self.cross_operator
         )
         self.pad = 0
@@ -204,10 +222,11 @@ class E2E(STInterface, torch.nn.Module):
                 positional_dropout_rate=args.dropout_rate,
                 self_attention_dropout_rate=args.transformer_attn_dropout_rate,
                 src_attention_dropout_rate=args.transformer_attn_dropout_rate,
+                normalize_before=self.normalize_before,
                 cross_operator=self.cross_operator
             )
             if self.num_decoders == 1:
-                logging.info('| use 1 decoder')
+                logging.info('*** Use 1 decoder *** ')
                 self.decoder_asr = self.decoder
         # submodule for MT task
         self.mt_weight = getattr(args, "mt_weight", 0.0)
@@ -323,8 +342,14 @@ class E2E(STInterface, torch.nn.Module):
             cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, self.ignore_id, wait_k_cross=self.wait_k_asr)
             # logging.info(f'st cross_mask \t {cross_mask}')
             # logging.info(f'st cross_mask.size() = {cross_mask.size()}')
+            cross_input = self.decoder_asr.embed(ys_in_pad_src)
+            if (self.cross_src_from == "before-self" and self.cross_src) or \
+                    (self.cross_self_from == "before-self" and self.cross_self): 
+                cross_input = self.decoder_asr.decoders[0].norm1(cross_input)
+            # logging.info(f'st cross_input size = {cross_input.size()}')
+            # logging.info(f'st cross_input norm = {torch.norm(cross_input)}')
             pred_pad, pred_mask = self.decoder(ys_in_pad, ys_mask, hs_pad, hs_mask,
-                                        cross=self.decoder_asr.embed(ys_in_pad_src), cross_mask=cross_mask,
+                                        cross=cross_input, cross_mask=cross_mask,
                                         cross_self=self.cross_self, cross_src=self.cross_src,
                                         cross_operator=self.cross_operator, cross_weight=self.cross_weight)
         else:
@@ -343,8 +368,15 @@ class E2E(STInterface, torch.nn.Module):
                 cross_mask = create_cross_mask(ys_in_pad_src, ys_in_pad, self.ignore_id, wait_k_cross=0)
                 # logging.info(f'asr cross_mask \t {cross_mask}')
                 # logging.info(f'asr cross_mask.size() = {cross_mask.size()}')
+                cross_input = self.decoder.embed(ys_in_pad)
+                if (self.cross_src_from == "before-self" and self.cross_src) or \
+                    (self.cross_self_from == "before-self" and self.cross_self):
+                    cross_input = self.decoder.decoders[0].norm1(cross_input)
+                # logging.info(f'asr cross_input size = {cross_input.size()}')
+                # logging.info(f'asr cross_input norm = {torch.norm(cross_input)}')
+
                 pred_pad_asr, _ = self.decoder_asr(ys_in_pad_src, ys_mask_src, hs_pad, hs_mask,
-                                        cross=self.decoder.embed(ys_in_pad), cross_mask=cross_mask,
+                                        cross=cross_input, cross_mask=cross_mask,
                                         cross_self=self.cross_self, cross_src=self.cross_src,
                                         cross_operator=self.cross_operator, cross_weight=self.cross_weight)
             else:
@@ -798,9 +830,12 @@ class E2E(STInterface, torch.nn.Module):
             if decoder_cross is not None:
                 all_scores = []
                 for hyp_cross in hyps_cross_candidates:
-                    y_cross = torch.tensor(hyp_cross['yseq']).unsqueeze(0)
+                    y_cross = decoder_cross.embed(torch.tensor(hyp_cross['yseq']).unsqueeze(0))
+                    if (self.cross_self_from == "before-self" and self.cross_self) or \
+                        (self.cross_src_from == "before-self" and self.cross_src):
+                        y_cross = decoder_cross.decoders[0].norm1(cross_input)
                     local_att_scores = decoder.forward_one_step(ys, ys_mask, enc_output, 
-                                                                cross=decoder_cross.embed(y_cross), cross_mask=None,
+                                                                cross=y_cross, cross_mask=None,
                                                                 cross_self=self.cross_self, cross_src=self.cross_src,
                                                                 cross_operator=self.cross_operator, cross_weight=self.cross_weight)[0]
                     V = local_att_scores.shape[-1]
@@ -825,7 +860,6 @@ class E2E(STInterface, torch.nn.Module):
                 hyps_best_kept, key=lambda x: x['score'], reverse=True)[:beam]
 
         return hyps_best_kept
-
 
     def process_hypothesis(self, i, hyps, ended_hyps, maxlen, minlen, trans_args, rnnlm=None):
 
@@ -867,7 +901,6 @@ class E2E(STInterface, torch.nn.Module):
             stop_decoding = True
         
         return hyps, ended_hyps, stop_decoding
-
 
     def recognize_and_translate(self, x, trans_args, char_list=None, rnnlm=None, use_jit=False):
         """Translate input speech.
@@ -1065,16 +1098,13 @@ class E2E(STInterface, torch.nn.Module):
         hyps = [hyp]
         ended_hyps = []
 
-        
         traced_decoder = None
         for i in six.moves.range(max(maxlen, maxlen_asr)):
-            logging.debug('position ' + str(i))
+            logging.info('position ' + str(i))
 
             hyps_best_kept = []
 
             for hyp in hyps:
-                # vy[0] = hyp['yseq'][i]
-
                 # get nbest local scores and their ids
                 if hyp['yseq'][-1] == self.eos and i > 2:
                     ys_mask = torch.ones_like(subsequent_mask(len(hyp['yseq'])).unsqueeze(0))
@@ -1089,6 +1119,11 @@ class E2E(STInterface, torch.nn.Module):
                 else:
                     ys_mask_asr = subsequent_mask(i + 1).unsqueeze(0)
                     ys_asr = torch.tensor(hyp['yseq_asr']).unsqueeze(0)
+                
+                # logging.info(f'ys.size()={ys.size()}')
+                # logging.info(f'ys_mask.size()={ys_mask.size()}')
+                # logging.info(f'ys_asr.size()={ys_asr.size()}')
+                # logging.info(f'ys_mask_asr.size()={ys_mask_asr.size()}')
 
                 # FIXME: jit does not match non-jit result
                 if use_jit:
@@ -1100,7 +1135,7 @@ class E2E(STInterface, torch.nn.Module):
                     if hyp['yseq'][-1] != self.eos or i < 2:
                         if self.cross_to_st:
                             local_att_scores = self.decoder.forward_one_step(ys, ys_mask, enc_output, 
-                                                                        cross=self.decoder_asr.embed(ys_asr), cross_mask=ys_mask_asr,
+                                                                        cross=self.decoder_asr.embed(ys_asr), cross_mask=None,
                                                                         cross_self=self.cross_self, cross_src=self.cross_src,
                                                                         cross_operator=self.cross_operator, cross_weight=self.cross_weight)[0]
                         else:
@@ -1112,24 +1147,14 @@ class E2E(STInterface, torch.nn.Module):
                     if hyp['yseq_asr'][-1] != self.eos or i < 2:
                         if self.cross_to_asr:
                             local_att_scores_asr = self.decoder_asr.forward_one_step(ys_asr, ys_mask_asr, enc_output,
-                                                                        cross=self.decoder.embed(ys), cross_mask=ys_mask,
+                                                                        cross=self.decoder.embed(ys), cross_mask=None,
                                                                         cross_self=self.cross_self, cross_src=self.cross_src,
                                                                         cross_operator=self.cross_operator, cross_weight=self.cross_weight)[0]
                         else:
                             local_att_scores_asr = self.decoder_asr.forward_one_step(ys_asr, ys_mask_asr, enc_output)[0]
                     else:
                         local_att_scores_asr = None
-                    # logging.info(f'i={i}, local_att_scores_asr={local_att_scores_asr}')                
-
-                # if rnnlm:
-                #     rnnlm_state, local_lm_scores = rnnlm.predict(hyp['rnnlm_prev'], vy)
-                #     local_scores = local_att_scores + trans_args.lm_weight * local_lm_scores
-                # else:
-                #     local_scores = local_att_scores
-
-                # # compute joint scores
-                # a, ai = torch.topk(local_att_scores, beam, dim=1)
-                # b, bi = torch.topk(local_att_scores_asr, beam, dim=1)
+                    # logging.info(f'i={i}, local_att_scores_asr={local_att_scores_asr}')
 
                 if local_att_scores is not None and local_att_scores_asr is not None:
                     local_att_scores_asr = decode_asr_weight * local_att_scores_asr
@@ -1166,16 +1191,6 @@ class E2E(STInterface, torch.nn.Module):
                         new_hyp['yseq_asr'][len(hyp['yseq_asr'])] = int(local_best_ids_asr[j])
                     else:
                         new_hyp['yseq_asr'] = hyp['yseq_asr']
-
-                    # new_hyp['score'] = hyp['score'] + float(a[0, j]) + float(b[0, j])
-                    # new_hyp['yseq'] = [0] * (1 + len(hyp['yseq']))
-                    # new_hyp['yseq'][:len(hyp['yseq'])] = hyp['yseq']
-                    # new_hyp['yseq'][len(hyp['yseq'])] = int(ai[0, j])
-                    # new_hyp['yseq_asr'] = [0] * (1 + len(hyp['yseq_asr']))
-                    # new_hyp['yseq_asr'][:len(hyp['yseq_asr'])] = hyp['yseq_asr']
-                    # new_hyp['yseq_asr'][len(hyp['yseq_asr'])] = int(bi[0, j])
-                    # logging.info(f'local_best_ids: {new_hyp["yseq"]}')
-                    # logging.info(f'local_best_ids_asr: {new_hyp["yseq_asr"]}')
 
                     # if rnnlm:
                     #     new_hyp['rnnlm_prev'] = rnnlm_state

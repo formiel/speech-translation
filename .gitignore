@@ -7,3 +7,4 @@ egs/must_c/st_multilingual/submit_sequential_jobs.sh
 egs/must_c/st_multilingual/test.py
 egs/must_c/st_multilingual/toto.sh
 *.DS_Store
+egs/must_c/st_multilingual/_NOTES.md

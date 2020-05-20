@@ -6,8 +6,10 @@ eunits: 2048
 dlayers: 6
 dunits: 2048
 # attention related
-adim: 256
-aheads: 4
+# adim: 256
+# aheads: 4
+adim: 512
+aheads: 8
 
 # multitask
 mtlalpha: 0.0
@@ -16,25 +18,25 @@ mt-weight: 0.0
 
 # Cross attention
 lang-tok: decoder-pre
-cross-weight: 0.3
+cross-weight: 0.0
 cross-self: False
-cross-src: True
+cross-src: False
 cross-to-asr: False
-cross-to-st: True
-cross-operator: concat
-wait-k-asr: 3
+cross-to-st: False
+num-decoders: 1
+# cross-operator: None
 
 # label smoothing
 lsm-weight: 0.1
 
 # minibatch related
-batch-size: 32 # per-gpu batch_size (original: 64)
+batch-size: 16 # per-gpu batch_size (original: 64)
 maxlen-in: 512  # if input length  > maxlen-in, batchsize is automatically reduced
 maxlen-out: 150 # if output length > maxlen-out, batchsize is automatically reduced
 
 # saving interval
-report-interval-iters: 1000
-save-interval-iters: 1000
+report-interval-iters: 2000
+save-interval-iters: 2000
 n-iter-processes: 24
 
 # optimization related
@@ -42,9 +44,9 @@ sortagrad: 0 # Feed samples from shortest to longest ; -1: enabled for all epoch
 opt: noam
 accum-grad: 2
 grad-clip: 5
-patience: 0
+patience: 5
 epochs: 35  # longer version of "short" for SpecAugment: 30ep->50ep
-time-limit: 100
+time-limit: 20
 dropout-rate: 0.1
 
 # transformer specific setting
@@ -58,5 +60,8 @@ transformer-length-normalized-loss: false
 transformer-init: pytorch
 
 # pre-training related
+# enc-init-mods: encoder.embed,encoder.encoders,encoder.after_norm
+# dec-init-mods: decoder.embed,decoder.decoders,decoder.after_norm,decoder.output_layer
+
 enc-init-mods: encoder.embed,encoder.encoders,encoder.after_norm
-dec-init-mods: decoder.embed,decoder.decoders,decoder.after_norm,decoder.output_layer
+enc-init: /gpfsdswork/projects/rech/dbn/umz16dj/pretrained_models/librispeech/model.v1.transformerlm.v1/librispeech.transformer.v1/exp/train_960_pytorch_train_pytorch_transformer.v1_aheads8_batch-bins15000000_specaug/results/model.val5.avg.best

@@ -7,7 +7,6 @@
 """Multi-Head Attention layer definition."""
 
 import math
-
 import numpy
 import torch
 from torch import nn

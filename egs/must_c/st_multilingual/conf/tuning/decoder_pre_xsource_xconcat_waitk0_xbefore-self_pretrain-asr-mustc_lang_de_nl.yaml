@@ -21,7 +21,7 @@ cross-self: False
 cross-src: True
 cross-to-asr: True
 cross-to-st: True
-cross-operator: concat
+cross-operator: src_concat
 cross-src-from: before-self
 wait-k-asr: 0
 

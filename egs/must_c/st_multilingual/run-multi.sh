@@ -413,10 +413,10 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
     fi
     echo "| trans_model: ${trans_model}"
 
-    num_threads=96
+    # num_threads=96
     # nj=$(( num_threads / lang_count ))
     # nj=$(( num_threads / (lang_count * 2) ))
-    nj=96
+    nj=`grep -c ^processor /proc/cpuinfo`
     if [[ $tag == *"debug"* ]]; then
         nj=1 # for debug
     fi

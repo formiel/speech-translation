@@ -21,7 +21,7 @@ cross-self: True
 cross-src: True
 cross-to-asr: True
 cross-to-st: True
-cross-operator: sum
+cross-operator: self_src_sum
 cross-src-from: before-src
 cross-self-from: before-self
 wait-k-asr: 0

@@ -47,12 +47,15 @@ class DecoderLayer(nn.Module):
                 self.cross_attn = cross_self_attn
             if cross_src_attn is not None:
                 self.cross_attn = cross_src_attn
+            if cross_self_attn is None and cross_src_attn is None:
+                self.cross_attn = None
             self.cross_shared = True
 
-        if cross_self_attn is not None and cross_operator == "concat":
+        if (cross_self_attn is not None or cross_src_attn is not None) and cross_operator == "concat":
             self.cross_concat_linear1 = nn.Linear(size + size, size)
-        if cross_src_attn is not None and cross_operator == "concat":
             self.cross_concat_linear2 = nn.Linear(size + size, size)
+        # if cross_src_attn is not None and cross_operator == "concat":
+        #     self.cross_concat_linear2 = nn.Linear(size + size, size)
 
         self.norm1 = LayerNorm(size)
         self.norm2 = LayerNorm(size)

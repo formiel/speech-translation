@@ -8,3 +8,6 @@ egs/must_c/st_multilingual/test.py
 egs/must_c/st_multilingual/toto.sh
 *.DS_Store
 egs/must_c/st_multilingual/_NOTES.md
+egs/must_c/st_multilingual/submit.slurm
+egs/must_c/st_multilingual/submit_cpu.slurm
+egs/must_c/st_multilingual/run-multi-cpu.sh

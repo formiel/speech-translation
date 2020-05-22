@@ -112,47 +112,6 @@ class Decoder(ScorerInterface, torch.nn.Module):
             )
         )
 
-        # if not cross_shared:
-        #     cross_self_attn = None
-        #     cross_src_attn = None
-        #     if cross_operator:
-        #         cross_self_attn = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
-        #         cross_src_attn = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
-        #     self.decoders = repeat(
-        #         num_blocks,
-        #         lambda: DecoderLayer(
-        #             attention_dim,
-        #             MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate),
-        #             MultiHeadedAttention(attention_heads, attention_dim, src_attention_dropout_rate),
-        #             PositionwiseFeedForward(attention_dim, linear_units, dropout_rate),
-        #             dropout_rate,
-        #             normalize_before,
-        #             concat_after,
-        #             cross_self_attn=cross_self_attn,
-        #             cross_src_attn=cross_src_attn,
-        #             cross_operator=cross_operator
-        #         )
-        #     )
-        # else:
-        #     cross_attn = None
-        #     if cross_operator:
-        #         cross_attn = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
-        #     self.decoders = repeat(
-        #         num_blocks,
-        #         lambda: DecoderLayer(
-        #             attention_dim,
-        #             MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate),
-        #             MultiHeadedAttention(attention_heads, attention_dim, src_attention_dropout_rate),
-        #             PositionwiseFeedForward(attention_dim, linear_units, dropout_rate),
-        #             dropout_rate,
-        #             normalize_before,
-        #             concat_after,
-        #             cross_self_attn=cross_attn,
-        #             cross_src_attn=cross_attn,
-        #             cross_operator=cross_operator
-        #         )
-        #     )
-
         if self.normalize_before:
             self.after_norm = LayerNorm(attention_dim)
         if use_output_layer:

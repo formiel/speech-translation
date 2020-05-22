@@ -822,7 +822,9 @@ def trans(args):
                     logging.info('***** Recognize and Translate simultaneously for cross decoders ******')
                     if args.beam_search_type == 'sum':
                         logging.info('=== Beam search by sum of scores ===')
-                        nbest_hyps = model.recognize_and_translate_sum(feat, args, train_args.char_list, rnnlm, decode_asr_weight=args.decode_asr_weight)
+                        nbest_hyps = model.recognize_and_translate_sum(feat, args, train_args.char_list, rnnlm, 
+                                                                        decode_asr_weight=args.decode_asr_weight,
+                                                                        score_is_prob=args.score_is_prob)
                         new_js[name] = add_results_to_json_st_asr(js[name], nbest_hyps, train_args.char_list)
                     elif args.beam_search_type == 'separate':
                         logging.info('=== Beam search separately ===')

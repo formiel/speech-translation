@@ -51,7 +51,8 @@ class Decoder(ScorerInterface, torch.nn.Module):
                  pos_enc_class=PositionalEncoding,
                  normalize_before=True,
                  concat_after=False,
-                 cross_operator=None):
+                 cross_operator=None,
+                 cross_shared=False):
         """Construct an Decoder object."""
         torch.nn.Module.__init__(self)
         if input_layer == "embed":
@@ -75,9 +76,25 @@ class Decoder(ScorerInterface, torch.nn.Module):
         else:
             raise NotImplementedError("only `embed` or torch.nn.Module is supported.")
         self.normalize_before = normalize_before
-        cross_attn = None
+
+        cross_self_attn = None
+        cross_src_attn = None
         if cross_operator:
-            cross_attn = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
+            if 'src_' in cross_operator:
+                cross_src_attn = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
+
+            if 'self_' in cross_operator:
+                if cross_shared and cross_src_attn is not None:
+                    cross_self_attn = cross_src_attn
+                else:
+                    cross_self_attn = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
+            if 'concat' in cross_operator:
+                cross_operator = 'concat'
+            elif 'sum' in cross_operator:
+                cross_operator = 'sum'
+            else:
+                raise NotImplementedError
+
         self.decoders = repeat(
             num_blocks,
             lambda: DecoderLayer(
@@ -88,10 +105,54 @@ class Decoder(ScorerInterface, torch.nn.Module):
                 dropout_rate,
                 normalize_before,
                 concat_after,
-                cross_attn=cross_attn,
-                cross_operator=cross_operator
+                cross_self_attn=cross_self_attn,
+                cross_src_attn=cross_src_attn,
+                cross_operator=cross_operator,
+                cross_shared=cross_shared
             )
         )
+
+        # if not cross_shared:
+        #     cross_self_attn = None
+        #     cross_src_attn = None
+        #     if cross_operator:
+        #         cross_self_attn = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
+        #         cross_src_attn = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
+        #     self.decoders = repeat(
+        #         num_blocks,
+        #         lambda: DecoderLayer(
+        #             attention_dim,
+        #             MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate),
+        #             MultiHeadedAttention(attention_heads, attention_dim, src_attention_dropout_rate),
+        #             PositionwiseFeedForward(attention_dim, linear_units, dropout_rate),
+        #             dropout_rate,
+        #             normalize_before,
+        #             concat_after,
+        #             cross_self_attn=cross_self_attn,
+        #             cross_src_attn=cross_src_attn,
+        #             cross_operator=cross_operator
+        #         )
+        #     )
+        # else:
+        #     cross_attn = None
+        #     if cross_operator:
+        #         cross_attn = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
+        #     self.decoders = repeat(
+        #         num_blocks,
+        #         lambda: DecoderLayer(
+        #             attention_dim,
+        #             MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate),
+        #             MultiHeadedAttention(attention_heads, attention_dim, src_attention_dropout_rate),
+        #             PositionwiseFeedForward(attention_dim, linear_units, dropout_rate),
+        #             dropout_rate,
+        #             normalize_before,
+        #             concat_after,
+        #             cross_self_attn=cross_attn,
+        #             cross_src_attn=cross_attn,
+        #             cross_operator=cross_operator
+        #         )
+        #     )
+
         if self.normalize_before:
             self.after_norm = LayerNorm(attention_dim)
         if use_output_layer:

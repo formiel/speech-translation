@@ -21,8 +21,9 @@ cross-self: False
 cross-src: True
 cross-to-asr: True
 cross-to-st: True
-cross-operator: sum
+cross-operator: src_sum
 cross-src-from: before-self
+cross-shared: False
 wait-k-asr: 0
 
 # label smoothing

@@ -231,14 +231,16 @@ def get_parser(parser=None, required=True):
                         help='Enable cross attention for the ASR decoder i.e. ASR decoder attends to ST decoder.')
     parser.add_argument('--cross-to-st', type=strtobool, default=False,
                         help='Enable cross attention for the ST decoder i.e. ST decoder attends to ASR decoder.')
-    parser.add_argument('--cross-operator', default=None, type=str, choices=['sum', 'concat'],
+    parser.add_argument('--cross-operator', default=None, type=str, choices=['self_sum', 'self_concat', 'src_sum', 'src_concat', 'self_src_sum', 'self_src_concat'],
                         help='Operator in the cross attention module: whether to sum or concatenate self and cross attention.')
     parser.add_argument('--wait-k-asr', default=0, type=int,
                         help='st decoder waits asr for k steps.')
-    parser.add_argument('--cross-src-from', default='embedding', type=str, choices=['embedding', 'before-self', 'before-src', 'after-src'],
+    parser.add_argument('--cross-src-from', default='embedding', type=str, choices=['embedding', 'before-self', 'before-src'],
                         help='Where to take key and value of the cross decoder.')
     parser.add_argument('--cross-self-from', default='embedding', type=str, choices=['embedding', 'before-self'],
-                        help='Where to take key and value of the cross decoder.')    
+                        help='Where to take key and value of the cross decoder.')
+    parser.add_argument('--cross-shared', default=False, type=strtobool,
+                        help='Cross shared weights.')    
 
     # Feature transform: Normalization
     parser.add_argument('--stats-file', type=str, default=None,

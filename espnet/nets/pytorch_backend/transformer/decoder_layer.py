@@ -29,17 +29,31 @@ class DecoderLayer(nn.Module):
     """
 
     def __init__(self, size, self_attn, src_attn, feed_forward, dropout_rate,
-                 normalize_before=True, concat_after=False, cross_attn=None, cross_operator=None):
+                 normalize_before=True, concat_after=False, cross_self_attn=None, cross_src_attn=None, cross_operator=None, cross_shared=False):
         """Construct an DecoderLayer object."""
         super(DecoderLayer, self).__init__()
         self.size = size
         self.self_attn = self_attn
         self.src_attn = src_attn
         self.feed_forward = feed_forward
-        self.cross_attn = cross_attn
-        if cross_attn is not None and cross_operator == "concat":
+        if not cross_shared and cross_self_attn is not None and cross_src_attn is not None:
+            self.cross_self_attn = cross_self_attn
+            self.cross_src_attn = cross_src_attn
+            self.cross_shared = False
+        else:
+            self.cross_self_attn = None
+            self.cross_src_attn = None
+            if cross_self_attn is not None:
+                self.cross_attn = cross_self_attn
+            if cross_src_attn is not None:
+                self.cross_attn = cross_src_attn
+            self.cross_shared = True
+
+        if cross_self_attn is not None and cross_operator == "concat":
             self.cross_concat_linear1 = nn.Linear(size + size, size)
+        if cross_src_attn is not None and cross_operator == "concat":
             self.cross_concat_linear2 = nn.Linear(size + size, size)
+
         self.norm1 = LayerNorm(size)
         self.norm2 = LayerNorm(size)
         self.norm3 = LayerNorm(size)
@@ -61,6 +75,13 @@ class DecoderLayer(nn.Module):
             cache (torch.Tensor): cached output (batch, max_time_out-1, size)
             cross (torch.Tensor): decoded previous target from another decoder (batch, max_time_out, size)
         """
+        if self.cross_shared:
+            cross_self_attn = self.cross_attn
+            cross_src_attn = self.cross_attn
+        else:
+            cross_self_attn = self.cross_self_attn
+            cross_src_attn = self.cross_src_attn
+
         residual = tgt
         if self.normalize_before:
             tgt = self.norm1(tgt)
@@ -77,7 +98,6 @@ class DecoderLayer(nn.Module):
             tgt_q_mask = None
             if tgt_mask is not None:
                 tgt_q_mask = tgt_mask[:, -1:, :]
-                # logging.info(f'| tgt_q_mask.size() = {tgt_q_mask.size()}')
         
         # Self-attention
         if self.concat_after:
@@ -86,26 +106,19 @@ class DecoderLayer(nn.Module):
             x = self.concat_linear1(tgt_concat)
         else:
             # x = residual + self.dropout(self.self_attn(tgt_q, tgt, tgt, tgt_q_mask))
-            # logging.info(f'tgt_q.shape = {tgt_q.shape}')
-            # logging.info(f'tgt.shape = {tgt.shape}')
-            # logging.info(f'tgt_q_mask.shape = {tgt_q_mask.shape}')
             x = self.dropout(self.self_attn(tgt_q, tgt, tgt, tgt_q_mask))
         
         # Cross attention
-        if (self.cross_attn is not None and cross is not None and cross_self):
-                # mask = torch.einsum('bii,bkk->bik', tgt_q_mask, cross_mask)
-                # logging.info(f'CROSS SELF')
-                # logging.info(f'cross_mask.shape = \n {cross_mask.shape}')
-                # logging.info(f'mask = \n {mask}')
-                # logging.info(f'mask shape = {mask.shape}, type = {mask.type()}')
-                # z = self.dropout(self.cross_attn(tgt_q, cross, cross, mask))
-                z = self.dropout(self.cross_attn(tgt_q, cross, cross, cross_mask))
-                if cross_operator == 'sum':
-                    x = x + cross_weight*z
-                elif cross_operator == 'concat':
-                    x = self.cross_concat_linear1(torch.cat((x, z), dim=-1))
-                else:
-                    raise NotImplementedError
+        if (cross_self_attn is not None and cross is not None and cross_self):
+            # mask = torch.einsum('bii,bkk->bik', tgt_q_mask, cross_mask)
+            # z = self.dropout(self.cross_attn(tgt_q, cross, cross, mask))
+            z = self.dropout(cross_self_attn(tgt_q, cross, cross, cross_mask))
+            if cross_operator == 'sum':
+                x = x + cross_weight*z
+            elif cross_operator == 'concat':
+                x = self.cross_concat_linear1(torch.cat((x, z), dim=-1))
+            else:
+                raise NotImplementedError
 
         x = x + residual
 
@@ -127,13 +140,10 @@ class DecoderLayer(nn.Module):
             x = self.dropout(self.src_attn(x, memory, memory, memory_mask))
         
         # Cross attention
-        if (self.cross_attn is not None and cross is not None and cross_src):
+        if (cross_src_attn is not None and cross is not None and cross_src):
             # mask = torch.einsum('bii->bi', cross_mask).unsqueeze(1)
-            # logging.info(f'CROSS SOURCE')
-            # logging.info(f'cross_mask.shape = \n {cross_mask.shape}')
-            # logging.info(f'mask = \n {mask}')
             # z = self.dropout(self.cross_attn(y, cross, cross, mask))
-            z = self.dropout(self.cross_attn(y, cross, cross, cross_mask))
+            z = self.dropout(cross_src_attn(y, cross, cross, cross_mask))
             if cross_operator == 'sum':
                 x = x + cross_weight * z
             elif cross_operator == 'concat':

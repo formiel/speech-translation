@@ -24,7 +24,7 @@ from espnet.nets.pytorch_backend.nets_utils import pad_list
 from espnet.nets.pytorch_backend.nets_utils import th_accuracy
 from espnet.nets.pytorch_backend.transformer.add_sos_eos import add_sos_eos
 from espnet.nets.pytorch_backend.transformer.attention import MultiHeadedAttention
-from espnet.nets.pytorch_backend.transformer.decoder import Decoder
+from espnet.nets.pytorch_backend.transformer.decoder_dual import DualDecoder
 from espnet.nets.pytorch_backend.transformer.encoder import Encoder
 from espnet.nets.pytorch_backend.transformer.initializer import initialize
 from espnet.nets.pytorch_backend.transformer.label_smoothing_loss import LabelSmoothingLoss
@@ -182,19 +182,33 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         if (self.cross_self_from != "embedding" and self.cross_self) and (not self.normalize_before):
             logging.warning(f'WARNING: Resort to using self.cross_self_from == embedding for cross at self attention.')
 
-        self.decoder = Decoder(
-            odim=odim,
-            attention_dim=args.adim,
-            attention_heads=args.aheads,
-            linear_units=args.dunits,
-            num_blocks=args.dlayers,
-            dropout_rate=args.dropout_rate,
-            positional_dropout_rate=args.dropout_rate,
-            self_attention_dropout_rate=args.transformer_attn_dropout_rate,
-            src_attention_dropout_rate=args.transformer_attn_dropout_rate,
-            normalize_before=self.normalize_before,
-            cross_operator=self.cross_operator
+        # self.decoder = Decoder(
+        #     odim=odim,
+        #     attention_dim=args.adim,
+        #     attention_heads=args.aheads,
+        #     linear_units=args.dunits,
+        #     num_blocks=args.dlayers,
+        #     dropout_rate=args.dropout_rate,
+        #     positional_dropout_rate=args.dropout_rate,
+        #     self_attention_dropout_rate=args.transformer_attn_dropout_rate,
+        #     src_attention_dropout_rate=args.transformer_attn_dropout_rate,
+        #     normalize_before=self.normalize_before,
+        #     cross_operator=self.cross_operator
+        # )
+        self.dual_deccoder = DualDecoder(
+                odim=odim,
+                attention_dim=args.adim,
+                attention_heads=args.aheads,
+                linear_units=args.dunits,
+                num_blocks=args.dlayers,
+                dropout_rate=args.dropout_rate,
+                positional_dropout_rate=args.dropout_rate,
+                self_attention_dropout_rate=args.transformer_attn_dropout_rate,
+                src_attention_dropout_rate=args.transformer_attn_dropout_rate,
+                normalize_before=self.normalize_before,
+                cross_operator=self.cross_operator
         )
+
         self.pad = 0
         self.sos = odim - 1
         self.eos = odim - 1
@@ -210,24 +224,25 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         # self.verbose = args.verbose
         self.adim = args.adim
 
-        if self.do_asr:
-            logging.info('*** Do ASR ***')
-            self.decoder_asr = Decoder(
-                odim=odim,
-                attention_dim=args.adim,
-                attention_heads=args.aheads,
-                linear_units=args.dunits,
-                num_blocks=args.dlayers,
-                dropout_rate=args.dropout_rate,
-                positional_dropout_rate=args.dropout_rate,
-                self_attention_dropout_rate=args.transformer_attn_dropout_rate,
-                src_attention_dropout_rate=args.transformer_attn_dropout_rate,
-                normalize_before=self.normalize_before,
-                cross_operator=self.cross_operator
-            )
-            if self.num_decoders == 1:
-                logging.info('*** Use 1 decoder *** ')
-                self.decoder_asr = self.decoder
+        # if self.do_asr:
+        #     logging.info('*** Do ASR ***')
+        #     self.decoder_asr = Decoder(
+        #         odim=odim,
+        #         attention_dim=args.adim,
+        #         attention_heads=args.aheads,
+        #         linear_units=args.dunits,
+        #         num_blocks=args.dlayers,
+        #         dropout_rate=args.dropout_rate,
+        #         positional_dropout_rate=args.dropout_rate,
+        #         self_attention_dropout_rate=args.transformer_attn_dropout_rate,
+        #         src_attention_dropout_rate=args.transformer_attn_dropout_rate,
+        #         normalize_before=self.normalize_before,
+        #         cross_operator=self.cross_operator
+        #     )
+        #     if self.num_decoders == 1:
+        #         logging.info('*** Use 1 decoder *** ')
+        #         self.decoder_asr = self.decoder
+        
         # submodule for MT task
         self.mt_weight = getattr(args, "mt_weight", 0.0)
         if self.mt_weight > 0:
@@ -332,57 +347,70 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                 ys_in_pad_src = torch.cat([tgt_lang_ids_src, ys_in_pad_src[:, 1:]], dim=1)
 
         ys_mask = target_mask(ys_in_pad, self.ignore_id) # bs x max_lens x max_lens
+        # logging.info(f'ys_in_pad.size() = {ys_in_pad.size()}')
+        # logging.info(f'ys_in_pad_src.size() = {ys_in_pad_src.size()}')
         # logging.info(f'ys_mask.size() = {ys_mask.size()}')
 
         if self.do_asr:
             ys_mask_src = target_mask(ys_in_pad_src, self.ignore_id) # bs x max_lens x max_lens_src
             # logging.info(f'ys_mask_src.size() = {ys_mask_src.size()}')
 
-        if self.cross_to_st:
-            cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, self.ignore_id, wait_k_cross=self.wait_k_asr)
-            # logging.info(f'st cross_mask \t {cross_mask}')
-            # logging.info(f'st cross_mask.size() = {cross_mask.size()}')
-            cross_input = self.decoder_asr.embed(ys_in_pad_src)
-            if (self.cross_src_from == "before-self" and self.cross_src) or \
-                    (self.cross_self_from == "before-self" and self.cross_self): 
-                cross_input = self.decoder_asr.decoders[0].norm1(cross_input)
-            # logging.info(f'st cross_input size = {cross_input.size()}')
-            # logging.info(f'st cross_input norm = {torch.norm(cross_input)}')
-            pred_pad, pred_mask = self.decoder(ys_in_pad, ys_mask, hs_pad, hs_mask,
-                                        cross=cross_input, cross_mask=cross_mask,
-                                        cross_self=self.cross_self, cross_src=self.cross_src,
-                                        cross_operator=self.cross_operator, cross_weight=self.cross_weight)
-        else:
-            pred_pad, pred_mask = self.decoder(ys_in_pad, ys_mask, hs_pad, hs_mask)
+        # if self.cross_to_st:
+        #     cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, self.ignore_id, wait_k_cross=self.wait_k_asr)
+        #     # logging.info(f'st cross_mask \t {cross_mask}')
+        #     # logging.info(f'st cross_mask.size() = {cross_mask.size()}')
+        #     cross_input = self.decoder_asr.embed(ys_in_pad_src)
+        #     if (self.cross_src_from == "before-self" and self.cross_src) or \
+        #             (self.cross_self_from == "before-self" and self.cross_self): 
+        #         cross_input = self.decoder_asr.decoders[0].norm1(cross_input)
+        #     # logging.info(f'st cross_input size = {cross_input.size()}')
+        #     # logging.info(f'st cross_input norm = {torch.norm(cross_input)}')
+        #     pred_pad, pred_mask = self.decoder(ys_in_pad, ys_mask, hs_pad, hs_mask,
+        #                                 cross=cross_input, cross_mask=cross_mask,
+        #                                 cross_self=self.cross_self, cross_src=self.cross_src,
+        #                                 cross_operator=self.cross_operator, cross_weight=self.cross_weight)
+        # else:
+        #     pred_pad, pred_mask = self.decoder(ys_in_pad, ys_mask, hs_pad, hs_mask)
+
+        cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, self.ignore_id, wait_k_cross=self.wait_k_asr)
+        cross_mask_asr = create_cross_mask(ys_in_pad_src, ys_in_pad, self.ignore_id, wait_k_cross=0)
+        pred_pad, pred_mask, pred_pad_asr, pred_mask_asr = self.dual_deccoder(ys_in_pad, ys_mask, ys_in_pad_src, ys_mask_src,
+                                                                                hs_pad, hs_mask, cross_mask, cross_mask_asr,
+                                                                                cross_self=self.cross_self, cross_src=self.cross_src,
+                                                                                cross_self_from=self.cross_self_from,
+                                                                                cross_src_from=self.cross_src_from,
+                                                                                cross_operator=self.cross_operator,
+                                                                                cross_weight=self.cross_weight)
 
         self.pred_pad = pred_pad
-        pred_pad_asr, pred_pad_mt = None, None
+        self.pred_pad_asr = pred_pad_asr
+        pred_pad_mt = None
 
         # 3. compute attention loss
         loss_asr, loss_mt = 0.0, 0.0
         loss_att = self.criterion(pred_pad, ys_out_pad)
-        # Multi-task w/ ASR
-        if self.do_asr:
-            # forward ASR decoder
-            if self.cross_to_asr:
-                cross_mask = create_cross_mask(ys_in_pad_src, ys_in_pad, self.ignore_id, wait_k_cross=0)
-                # logging.info(f'asr cross_mask \t {cross_mask}')
-                # logging.info(f'asr cross_mask.size() = {cross_mask.size()}')
-                cross_input = self.decoder.embed(ys_in_pad)
-                if (self.cross_src_from == "before-self" and self.cross_src) or \
-                    (self.cross_self_from == "before-self" and self.cross_self):
-                    cross_input = self.decoder.decoders[0].norm1(cross_input)
-                # logging.info(f'asr cross_input size = {cross_input.size()}')
-                # logging.info(f'asr cross_input norm = {torch.norm(cross_input)}')
+        # # Multi-task w/ ASR
+        # if self.do_asr:
+        #     # forward ASR decoder
+        #     if self.cross_to_asr:
+        #         cross_mask = create_cross_mask(ys_in_pad_src, ys_in_pad, self.ignore_id, wait_k_cross=0)
+        #         # logging.info(f'asr cross_mask \t {cross_mask}')
+        #         # logging.info(f'asr cross_mask.size() = {cross_mask.size()}')
+        #         cross_input = self.decoder.embed(ys_in_pad)
+        #         if (self.cross_src_from == "before-self" and self.cross_src) or \
+        #             (self.cross_self_from == "before-self" and self.cross_self):
+        #             cross_input = self.decoder.decoders[0].norm1(cross_input)
+        #         # logging.info(f'asr cross_input size = {cross_input.size()}')
+        #         # logging.info(f'asr cross_input norm = {torch.norm(cross_input)}')
 
-                pred_pad_asr, _ = self.decoder_asr(ys_in_pad_src, ys_mask_src, hs_pad, hs_mask,
-                                        cross=cross_input, cross_mask=cross_mask,
-                                        cross_self=self.cross_self, cross_src=self.cross_src,
-                                        cross_operator=self.cross_operator, cross_weight=self.cross_weight)
-            else:
-                pred_pad_asr, _ = self.decoder_asr(ys_in_pad_src, ys_mask_src, hs_pad, hs_mask)
-            # compute loss
-            loss_asr = self.criterion(pred_pad_asr, ys_out_pad_src)
+        #         pred_pad_asr, _ = self.decoder_asr(ys_in_pad_src, ys_mask_src, hs_pad, hs_mask,
+        #                                 cross=cross_input, cross_mask=cross_mask,
+        #                                 cross_self=self.cross_self, cross_src=self.cross_src,
+        #                                 cross_operator=self.cross_operator, cross_weight=self.cross_weight)
+        #     else:
+        #         pred_pad_asr, _ = self.decoder_asr(ys_in_pad_src, ys_mask_src, hs_pad, hs_mask)
+        # compute loss
+        loss_asr = self.criterion(pred_pad_asr, ys_out_pad_src)
         # Multi-task w/ MT
         if self.mt_weight > 0:
             # forward MT encoder
@@ -1274,228 +1302,6 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         logging.info('normalized log probability: ' + str(nbest_hyps[0]['score'] / len(nbest_hyps[0]['yseq'])))
 
         return nbest_hyps
-
-    def recognize_and_translate_tuple(self, x, trans_args, char_list=None, rnnlm=None, use_jit=False):
-        """Recognize and translate input speech.
-
-        :param ndnarray x: input acoustic feature (B, T, D) or (T, D)
-        :param Namespace trans_args: argment Namespace contraining options
-        :param list char_list: list of characters
-        :param torch.nn.Module rnnlm: language model module
-        :return: N-best decoding results
-        :rtype: list
-        """
-        assert self.do_asr, "Recognize and translate are performed simultaneously."
-
-        # preprate sos
-        if getattr(trans_args, "tgt_lang", False):
-            if self.replace_sos:
-                y = char_list.index(trans_args.tgt_lang)
-        else:
-            y = self.sos
-
-        if self.one_to_many and self.lang_tok == 'decoder-pre':
-            tgt_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[-1])
-            y = char_list.index(tgt_lang_id)
-            logging.info(f'tgt_lang_id: {tgt_lang_id} - y: {y}')
-
-            src_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[0])
-            y_asr = char_list.index(src_lang_id)
-            logging.info(f'src_lang_id: {src_lang_id} - y_asr: {y_asr}')
-        else:
-            y = self.sos
-            y_asr = self.sos
-        
-        logging.info(f'<sos> index: {str(y)}; <sos> mark: {char_list[y]}')
-        logging.info(f'<sos> index asr: {str(y_asr)}; <sos> mark asr: {char_list[y_asr]}')
-
-        enc_output = self.encode(x).unsqueeze(0)
-        h = enc_output.squeeze(0)
-
-        logging.info('input lengths: ' + str(h.size(0)))
-        # search parms
-        beam = trans_args.beam_size
-        penalty = trans_args.penalty
-        beam_asr = trans_args.beam_size_asr
-        penalty_asr = trans_args.penalty_asr
-        assert beam == beam_asr, "Currently implement equal beam search for ASR and ST"
-
-        vy = h.new_zeros(1).long()
-        vy_asr = h.new_zeros(1).long()
-
-        if trans_args.maxlenratio == 0:
-            maxlen = h.shape[0]
-        else:
-            maxlen = max(1, int(trans_args.maxlenratio * h.size(0)))
-        if trans_args.maxlenratio_asr == 0:
-            maxlen_asr = h.shape[0]
-        else:
-            maxlen_asr = max(1, int(trans_args.maxlenratio_asr * h.size(0)))
-        minlen = int(trans_args.minlenratio * h.size(0))
-        minlen_asr = int(trans_args.minlenratio_asr * h.size(0))
-        logging.info(f'max output length: {str(maxlen)}; min output length: {str(minlen)}')
-        logging.info(f'max output length asr: {str(maxlen_asr)}; min output length asr: {str(minlen_asr)}')
-
-        # initialize hypothesis
-        if rnnlm:
-            hyp = {'score': 0.0, 'yseq': [y], 'rnnlm_prev': None}
-        else:
-            logging.info('initializing hypothesis...')
-            hyp = {'score': 0.0, 'yseq': [(y, y_asr)]}
-
-        hyps = [hyp]
-        ended_hyps = []
-        ended_hyps_asr = []
-
-        
-        traced_decoder = None
-        for i in six.moves.range(max(maxlen, maxlen_asr)):
-            logging.debug('position ' + str(i))
-
-            hyps_best_kept = []
-
-            for hyp in hyps:
-                # vy[0] = hyp['yseq'][i]
-
-                # get nbest local scores and their ids
-                if i < maxlen:
-                    ys_mask = subsequent_mask(i + 1).unsqueeze(0)
-                    ys = torch.tensor([w[0] for w in hyp['yseq']]).unsqueeze(0)
-                # else:
-                #     ys_mask
-
-                print(f'mask {i}: {ys_mask}')
-
-                ys_mask_asr = subsequent_mask(i + 1).unsqueeze(0)
-                ys_asr = torch.tensor([w[1] for w in hyp['yseq']]).unsqueeze(0)
-
-                # FIXME: jit does not match non-jit result
-                if use_jit:
-                    if traced_decoder is None:
-                        traced_decoder = torch.jit.trace(self.decoder.forward_one_step,
-                                                         (ys, ys_mask, enc_output))
-                    local_att_scores = traced_decoder(ys, ys_mask, enc_output)[0]
-                else:
-                    if self.cross_to_st:
-                        local_att_scores = self.decoder.forward_one_step(ys, ys_mask, enc_output, 
-                                                                    cross=self.decoder_asr.embed(ys_asr), cross_mask=ys_mask_asr,
-                                                                    cross_self=self.cross_self, cross_src=self.cross_src,
-                                                                    cross_operator=self.cross_operator, cross_weight=self.cross_weight)[0]
-                    else:
-                        local_att_scores = self.decoder.forward_one_step(ys, ys_mask, enc_output)[0]
-                    if self.cross_to_asr:
-                        local_att_scores_asr = self.decoder_asr.forward_one_step(ys_asr, ys_mask_asr, enc_output,
-                                                                    cross=self.decoder.embed(ys), cross_mask=ys_mask,
-                                                                    cross_self=self.cross_self, cross_src=self.cross_src,
-                                                                    cross_operator=self.cross_operator, cross_weight=self.cross_weight)[0]
-                    else:
-                        local_att_scores_asr = self.decoder_asr.forward_one_step(ys_asr, ys_mask_asr, enc_output)[0]
-
-                if rnnlm:
-                    rnnlm_state, local_lm_scores = rnnlm.predict(hyp['rnnlm_prev'], vy)
-                    local_scores = local_att_scores + trans_args.lm_weight * local_lm_scores
-                else:
-                    local_scores = local_att_scores
-
-                # compute joint scores
-                score_matrix = (torch.mm(torch.t(local_att_scores), torch.ones_like(local_att_scores))
-                                + torch.mm(torch.t(torch.ones_like(local_att_scores_asr)), local_att_scores_asr)) 
-
-                H, W = score_matrix.shape
-                local_best_scores, indices = score_matrix.view(-1).topk(beam)
-                local_best_ids = torch.cat(((indices // W).unsqueeze(1), (indices % W).unsqueeze(1)), dim=1)
-
-                for j in six.moves.range(beam):
-                    new_hyp = {}
-                    new_hyp['score'] = hyp['score'] + float(local_best_scores[j])
-                    new_hyp['yseq'] = [0] * (1 + len(hyp['yseq']))
-                    new_hyp['yseq'][:len(hyp['yseq'])] = hyp['yseq']
-                    new_hyp['yseq'][len(hyp['yseq'])] = (int(local_best_ids[j, 0]), int(local_best_ids[j, 1]))
-                    if rnnlm:
-                        new_hyp['rnnlm_prev'] = rnnlm_state
-                    # will be (2 x beam) hyps at most
-
-                    hyps_best_kept.append(new_hyp)
-
-                hyps_best_kept = sorted(
-                    hyps_best_kept, key=lambda x: x['score'], reverse=True)[:beam]
-
-            # sort and get nbest
-            hyps = hyps_best_kept
-            logging.debug('number of pruned hypothes: ' + str(len(hyps)))
-
-            if char_list is not None:
-                logging.info('best hypo: ' + ''.join([char_list[int(x[0])] for x in hyps[0]['yseq'][1:]]))
-                logging.info('best hypo asr: ' + ''.join([char_list[int(x[1])] for x in hyps[0]['yseq'][1:]]))
-
-            # add eos in the final loop to avoid that there are no ended hyps
-            if i == maxlen - 1:
-                logging.info('adding <eos> in the last postion in the loop')
-                for hyp in hyps:
-                    hyp['yseq'].append(self.eos)
-
-            # add ended hypothes to a final list, and removed them from current hypothes
-            # (this will be a problem, number of hyps < beam)
-            remained_hyps = []
-
-            for hyp in hyps:
-                if hyp['yseq'][-1] == self.eos:
-                    # only store the sequence that has more than minlen outputs
-                    # also add penalty
-                    if len(hyp['yseq']) > minlen:
-                        hyp['score'] += (i + 1) * penalty
-                        if rnnlm:  # Word LM needs to add final <eos> score
-                            hyp['score'] += trans_args.lm_weight * rnnlm.final(
-                                hyp['rnnlm_prev'])
-                        ended_hyps.append({'yseq': hyp['yseq'], 'score': hyp['score']})
-                else:
-                    remained_hyps.append(hyp)
-
-            # end detection
-            
-            if end_detect(ended_hyps, i) and trans_args.maxlenratio == 0.0:
-                logging.info('end detected at %d', i)
-                break
-            if end_detect(ended_hyps_asr, i, dict_key='_asr') and trans_args.maxlenratio_asr == 0.0:
-                logging.info('end detected at %d', i)
-                break
-
-            hyps = remained_hyps
-            logging.info(f'hyps remained: {hyps}')
-            if len(hyps) > 0:
-                logging.debug('remained hypothes: ' + str(len(hyps)))
-            else:
-                logging.info('no hypothesis. Finish decoding.')
-                break
-
-            if char_list is not None:
-                for hyp in hyps:
-                    logging.info('hypo: ' + ''.join([char_list[int(x[0])] for x in hyp['yseq'][1:]]))
-                    logging.info('hypo asr: ' + ''.join([char_list[int(x[1])] for x in hyp['yseq'][1:]]))
-
-            logging.info('number of ended hypothes: ' + str(len(ended_hyps)))
-            logging.info('number of ended hypothes asr: ' + str(len(ended_hyps_asr)))
-
-        nbest_hyps = sorted(
-            ended_hyps, key=lambda x: x['score'], reverse=True)[:min(len(ended_hyps), trans_args.nbest)]
-        nbest_hyps_asr = sorted(
-            ended_hyps_asr, key=lambda x: x['score_asr'], reverse=True)[:min(len(ended_hyps_asr), trans_args.nbest)]
-
-        # check number of hypotheis
-        if len(nbest_hyps) == 0 or len(nbest_hyps_asr) == 0:
-            logging.warning('there is no N-best results, perform recognition again with smaller minlenratio.')
-            # should copy becasuse Namespace will be overwritten globally
-            trans_args = Namespace(**vars(trans_args))
-            trans_args.minlenratio = max(0.0, trans_args.minlenratio - 0.1)
-            trans_args.minlenratio_asr = max(0.0, trans_args.minlenratio_asr - 0.1)
-            return self.recognize_and_translate(x, trans_args, char_list, rnnlm)
-
-        logging.info('total log probability: ' + str(nbest_hyps[0]['score']))
-        logging.info('normalized log probability: ' + str(nbest_hyps[0]['score'] / len(nbest_hyps[0]['yseq'])))
-        logging.info('total log probability: ' + str(nbest_hyps_asr[0]['score_asr']))
-        logging.info('normalized log probability: ' + str(nbest_hyps_asr[0]['score_asr'] / len(nbest_hyps_asr[0]['yseq_asr'])))
-
-        return nbest_hyps, nbest_hyps_asr
 
     def calculate_all_attentions(self, xs_pad, ilens, ys_pad, ys_pad_src):
         """E2E attention calculation.

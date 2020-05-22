@@ -95,7 +95,8 @@ def get_parser():
                         help='Beam cross size')
     parser.add_argument('--decode-asr-weight', type=float, default=1.0,
                         help='Input length ratio to obtain min output length')
-
+    parser.add_argument('--score-is-prob', default=False, type=strtobool,
+                        help='Score is probability or not when decoding.')
     # rnnlm related
     parser.add_argument('--rnnlm', type=str, default=None,
                         help='RNNLM model file to read')

@@ -141,6 +141,7 @@ class E2E(STInterface, torch.nn.Module):
         self.wait_k_asr = getattr(args, "wait_k_asr", 0)
         self.cross_src_from = getattr(args, "cross_src_from", "embedding")
         self.cross_self_from = getattr(args, "cross_self_from", "embedding")
+        self.cross_shared = getattr(args, "cross_shared", False)
 
         # one-to-many ST experiments
         self.one_to_many = getattr(args, "one_to_many", False)
@@ -151,7 +152,18 @@ class E2E(STInterface, torch.nn.Module):
         logging.info(f'self.normalize_before = {self.normalize_before}')
 
         # Check parameters
-        if self.cross_operator == 'sum' and self.cross_weight <= 0:
+        # Backward compatability
+        if self.cross_operator in ["sum", "concat"]:
+            if self.cross_self and self.cross_src:
+                self.cross_operator = "self_src" + self.cross_operator
+            elif self.cross_self:
+                self.cross_operator = "self_" + self.cross_operator
+            elif self.cross_src:
+                self.cross_operator = "src_" + self.cross_operator
+        if self.cross_operator:
+            assert self.cross_operator in ['self_sum', 'self_concat', 'src_sum', 'src_concat', 'self_src_sum', 'self_src_concat']
+
+        if self.cross_operator and 'sum' in self.cross_operator and self.cross_weight <= 0:
             assert (not self.cross_to_asr) and (not self.cross_to_st)
         if self.cross_to_asr or self.cross_to_st:
             assert self.do_asr
@@ -193,7 +205,8 @@ class E2E(STInterface, torch.nn.Module):
             self_attention_dropout_rate=args.transformer_attn_dropout_rate,
             src_attention_dropout_rate=args.transformer_attn_dropout_rate,
             normalize_before=self.normalize_before,
-            cross_operator=self.cross_operator
+            cross_operator=self.cross_operator,
+            cross_shared=self.cross_shared
         )
         self.pad = 0
         self.sos = odim - 1
@@ -223,7 +236,8 @@ class E2E(STInterface, torch.nn.Module):
                 self_attention_dropout_rate=args.transformer_attn_dropout_rate,
                 src_attention_dropout_rate=args.transformer_attn_dropout_rate,
                 normalize_before=self.normalize_before,
-                cross_operator=self.cross_operator
+                cross_operator=self.cross_operator,
+                cross_shared=self.cross_shared
             )
             if self.num_decoders == 1:
                 logging.info('*** Use 1 decoder *** ')
@@ -267,6 +281,12 @@ class E2E(STInterface, torch.nn.Module):
         if self.lang_tok == "encoder-pre-sum":
             self.language_embeddings = build_embedding(self.langs_dict, self.idim, padding_idx=self.pad)
             print(f'language_embeddings: {self.language_embeddings}')
+
+        if self.cross_operator:
+            if "sum" in self.cross_operator:
+                self.cross_operator = "sum"
+            if "concat" in self.cross_operator: 
+                self.cross_operator = "concat"
 
     def reset_parameters(self, args):
         """Initialize parameters."""
@@ -1031,7 +1051,7 @@ class E2E(STInterface, torch.nn.Module):
         
         return nbest_hyps, nbest_hyps_asr
 
-    def recognize_and_translate_sum(self, x, trans_args, char_list=None, rnnlm=None, use_jit=False, decode_asr_weight=1.0):
+    def recognize_and_translate_sum(self, x, trans_args, char_list=None, rnnlm=None, use_jit=False, decode_asr_weight=1.0, score_is_prob=False):
         """Recognize and translate input speech.
 
         :param ndnarray x: input acoustic feature (B, T, D) or (T, D)
@@ -1140,6 +1160,8 @@ class E2E(STInterface, torch.nn.Module):
                                                                         cross_operator=self.cross_operator, cross_weight=self.cross_weight)[0]
                         else:
                             local_att_scores = self.decoder.forward_one_step(ys, ys_mask, enc_output)[0]
+                        if score_is_prob:
+                            local_att_scores = torch.exp(local_att_scores)
                     else:
                         local_att_scores = None
                     # logging.info(f'i={i}, local_att_scores={local_att_scores}')
@@ -1152,6 +1174,8 @@ class E2E(STInterface, torch.nn.Module):
                                                                         cross_operator=self.cross_operator, cross_weight=self.cross_weight)[0]
                         else:
                             local_att_scores_asr = self.decoder_asr.forward_one_step(ys_asr, ys_mask_asr, enc_output)[0]
+                        if score_is_prob:
+                            local_att_scores_asr = torch.exp(local_att_scores_asr)
                     else:
                         local_att_scores_asr = None
                     # logging.info(f'i={i}, local_att_scores_asr={local_att_scores_asr}')

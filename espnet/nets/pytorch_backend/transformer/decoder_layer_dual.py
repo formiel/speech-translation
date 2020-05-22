@@ -12,7 +12,7 @@ from torch import nn
 from espnet.nets.pytorch_backend.transformer.layer_norm import LayerNorm
 
 
-class DecoderLayer(nn.Module):
+class DualDecoderLayer(nn.Module):
     """Single decoder layer module.
 
     :param int size: input dim
@@ -28,29 +28,59 @@ class DecoderLayer(nn.Module):
 
     """
 
-    def __init__(self, size, self_attn, src_attn, feed_forward, dropout_rate,
-                 normalize_before=True, concat_after=False, cross_attn=None, cross_operator=None):
+    def __init__(self, size, size_asr, self_attn, src_attn, feed_forward, 
+                 self_attn_asr, src_attn_asr, feed_forward_asr,
+                 cross_self_attn, cross_self_attn_asr, cross_src_attn, cross_src_attn_asr,
+                 dropout_rate, normalize_before=True, concat_after=False, cross_operator=None):
         """Construct an DecoderLayer object."""
-        super(DecoderLayer, self).__init__()
+        super(DualDecoderLayer, self).__init__()
         self.size = size
+        self.size_asr = size_asr
         self.self_attn = self_attn
         self.src_attn = src_attn
         self.feed_forward = feed_forward
-        self.cross_attn = cross_attn
-        if cross_attn is not None and cross_operator == "concat":
+
+        self.self_attn_asr = self_attn_asr
+        self.src_attn_asr = src_attn_asr
+        self.feed_forward_asr = feed_forward_asr
+
+        self.cross_self_attn = cross_self_attn
+        self.cross_self_attn_asr = cross_self_attn_asr
+        self.cross_src_attn = cross_src_attn
+        self.cross_src_attn_asr = cross_src_attn_asr
+
+        if cross_self_attn is not None and cross_operator == "concat":
             self.cross_concat_linear1 = nn.Linear(size + size, size)
+        if cross_self_attn_asr is not None and cross_operator == "concat":
+            self.cross_concat_linear1_asr = nn.Linear(size + size, size)
+        if cross_src_attn is not None and cross_operator == "concat":
             self.cross_concat_linear2 = nn.Linear(size + size, size)
+        if cross_src_attn_asr is not None and cross_operator == "concat":
+            self.cross_concat_linear2_asr = nn.Linear(size + size, size)
+
         self.norm1 = LayerNorm(size)
         self.norm2 = LayerNorm(size)
         self.norm3 = LayerNorm(size)
         self.dropout = nn.Dropout(dropout_rate)
+
+        self.norm1_asr = LayerNorm(size_asr)
+        self.norm2_asr = LayerNorm(size_asr)
+        self.norm3_asr = LayerNorm(size_asr)
+        self.dropout_asr = nn.Dropout(dropout_rate)
+
         self.normalize_before = normalize_before
         self.concat_after = concat_after
         if self.concat_after:
             self.concat_linear1 = nn.Linear(size + size, size)
             self.concat_linear2 = nn.Linear(size + size, size)
+            self.concat_linear1_asr = nn.Linear(size + size, size)
+            self.concat_linear2_asr = nn.Linear(size + size, size)
 
-    def forward(self, tgt, tgt_mask, memory, memory_mask, cross=None, cross_mask=None, cross_self=False, cross_src=False, cross_operator='sum', cross_weight=0.3, cache=None):
+    def forward(self, tgt, tgt_mask, tgt_asr, tgt_mask_asr, memory, memory_mask, cross_mask, cross_mask_asr,
+                cross_self=False, cross_src=False,
+                cross_self_from="before-self", cross_src_from="before-src", 
+                cross_operator='sum', cross_weight=0.3, 
+                cache=None, cache_asr=None):
         """Compute decoded features.
 
         Args:
@@ -62,8 +92,11 @@ class DecoderLayer(nn.Module):
             cross (torch.Tensor): decoded previous target from another decoder (batch, max_time_out, size)
         """
         residual = tgt
+        residual_asr = tgt_asr
+
         if self.normalize_before:
             tgt = self.norm1(tgt)
+            tgt_asr = self.norm1_asr(tgt_asr)
 
         if cache is None:
             tgt_q = tgt
@@ -77,84 +110,147 @@ class DecoderLayer(nn.Module):
             tgt_q_mask = None
             if tgt_mask is not None:
                 tgt_q_mask = tgt_mask[:, -1:, :]
-                # logging.info(f'| tgt_q_mask.size() = {tgt_q_mask.size()}')
+
+        if cache_asr is None:
+            tgt_q_asr = tgt_asr
+            tgt_q_mask_asr = tgt_mask_asr
+        else:
+            # compute only the last frame query keeping dim: max_time_out -> 1
+            assert cache_asr.shape == (tgt_asr.shape[0], tgt_asr.shape[1] - 1, self.size), \
+                f"{cache_asr.shape} == {(tgt_asr.shape[0], tgt_asr.shape[1] - 1, self.size)}"
+            tgt_q_asr = tgt_asr[:, -1:, :]
+            residual_asr = residual_asr[:, -1:, :]
+            tgt_q_mask_asr = None
+            if tgt_mask_asr is not None:
+                tgt_q_mask_asr = tgt_mask_asr[:, -1:, :]
         
+        # logging.info(f'| AFTER NORM - BEFORE SELF-ATTENTION')
+        # logging.info(f'tgt.size() = {tgt.size()}')
+        # logging.info(f'tgt_asr.size() = {tgt_asr.size()}')
+        # logging.info(f'----------------------------------')
+        # logging.info(f'tgt_q.size() = {tgt_q.size()}')
+        # logging.info(f'tgt_q_mask.size() = {tgt_q_mask.size()}')
+        # logging.info(f'----------------------------------')
+        # logging.info(f'tgt_q_asr.size() = {tgt_q_asr.size()}')
+        # logging.info(f'tgt_q_mask_asr.size() = {tgt_q_mask_asr.size()}')
+        # logging.info(f'----------------------------------')
+        # logging.info(f'cross_mask.size() = {cross_mask.size()}')
+        # logging.info(f'cross_mask_asr.size() = {cross_mask_asr.size()}')
+        # logging.info(f'----------------------------------')
+
         # Self-attention
         if self.concat_after:
             tgt_concat = torch.cat((tgt_q, self.self_attn(tgt_q, tgt, tgt, tgt_q_mask)), dim=-1)
-            # x = residual + self.concat_linear1(tgt_concat)
             x = self.concat_linear1(tgt_concat)
+            tgt_concat_asr = torch.cat((tgt_q_asr, self.self_attn_asr(tgt_q_asr, tgt_asr, tgt_asr, tgt_q_mask_asr)), dim=-1)
+            x_asr = self.concat_linear1_asr(tgt_concat_asr)
         else:
-            # x = residual + self.dropout(self.self_attn(tgt_q, tgt, tgt, tgt_q_mask))
-            # logging.info(f'tgt_q.shape = {tgt_q.shape}')
-            # logging.info(f'tgt.shape = {tgt.shape}')
-            # logging.info(f'tgt_q_mask.shape = {tgt_q_mask.shape}')
             x = self.dropout(self.self_attn(tgt_q, tgt, tgt, tgt_q_mask))
+            x_asr = self.dropout_asr(self.self_attn_asr(tgt_q_asr, tgt_asr, tgt_asr, tgt_q_mask_asr))
         
-        # Cross attention
-        if (self.cross_attn is not None and cross is not None and cross_self):
-                # mask = torch.einsum('bii,bkk->bik', tgt_q_mask, cross_mask)
-                # logging.info(f'CROSS SELF')
-                # logging.info(f'cross_mask.shape = \n {cross_mask.shape}')
-                # logging.info(f'mask = \n {mask}')
-                # logging.info(f'mask shape = {mask.shape}, type = {mask.type()}')
-                # z = self.dropout(self.cross_attn(tgt_q, cross, cross, mask))
-                z = self.dropout(self.cross_attn(tgt_q, cross, cross, cross_mask))
-                if cross_operator == 'sum':
-                    x = x + cross_weight*z
-                elif cross_operator == 'concat':
-                    x = self.cross_concat_linear1(torch.cat((x, z), dim=-1))
-                else:
-                    raise NotImplementedError
+        # logging.info(f'| AFTER SELF-ATTENTION')
+        # logging.info(f'x.size() = {x.size()}')
+        # logging.info(f'x_asr.size() = {x_asr.size()}')
+        # logging.info(f'----------------------------------')
+        
+        # logging.info(f'| BEFORE CROSS-SELF ATTENTION')
+        # Cross-self attention
+        if cross_self and cross_self_from == "before-self":
+            z = self.dropout(self.cross_self_attn(tgt_q, tgt_asr, tgt_asr, cross_mask))
+            z_asr = self.dropout_asr(self.cross_self_attn_asr(tgt_q_asr, tgt, tgt, cross_mask_asr))
+            if cross_operator == 'sum':
+                x = x + cross_weight * z
+                x_asr = x_asr + cross_weight * z_asr
+            elif cross_operator == 'concat':
+                x = self.cross_concat_linear1(torch.cat((x, z), dim=-1))
+                x_asr = self.cross_concat_linear1_asr(torch.cat((x_asr, z_asr), dim=-1))
+            else:
+                raise NotImplementedError
 
         x = x + residual
+        x_asr = x_asr + residual_asr
+        # logging.info(f'| AFTER CROSS-SELF-ATTENTION')
+        # logging.info(f'x.size() = {x.size()}')
+        # logging.info(f'x_asr.size() = {x_asr.size()}')
+        # logging.info(f'----------------------------------')
 
         if not self.normalize_before:
             x = self.norm1(x)
+            x_asr = self.norm1_asr(x_asr)
 
         # Source attention
         residual = x
+        residual_asr = x_asr
         if self.normalize_before:
             x = self.norm2(x)
+            x_asr = self.norm2_asr(x_asr)
         y = x
+        y_asr = x_asr
+
+        # logging.info(f'| BEFORE SOURCE-ATTENTION')
+        # logging.info(f'x.size() = {x.size()}')
+        # logging.info(f'x_asr.size() = {x_asr.size()}')
+        # logging.info(f'----------------------------------')
 
         if self.concat_after:
             x_concat = torch.cat((x, self.src_attn(x, memory, memory, memory_mask)), dim=-1)
-            # x = residual + self.concat_linear2(x_concat)
             x = self.concat_linear2(x_concat)
+            x_concat_asr = torch.cat((x_asr, self.src_attn_asr(x_asr, memory, memory, memory_mask)), dim=-1)
+            x_asr = self.concat_linear2_asr(x_concat_asr)
         else:
-            # x = residual + self.dropout(self.src_attn(x, memory, memory, memory_mask))
             x = self.dropout(self.src_attn(x, memory, memory, memory_mask))
+            x_asr = self.dropout_asr(self.src_attn_asr(x_asr, memory, memory, memory_mask))
         
-        # Cross attention
-        if (self.cross_attn is not None and cross is not None and cross_src):
-            # mask = torch.einsum('bii->bi', cross_mask).unsqueeze(1)
-            # logging.info(f'CROSS SOURCE')
-            # logging.info(f'cross_mask.shape = \n {cross_mask.shape}')
-            # logging.info(f'mask = \n {mask}')
-            # z = self.dropout(self.cross_attn(y, cross, cross, mask))
-            z = self.dropout(self.cross_attn(y, cross, cross, cross_mask))
+        # logging.info(f'| CROSS-SOURCE ATTENTION')
+        # Cross-source attention
+        if cross_src and cross_src_from == "before-src":
+            # logging.info(f'cross_mask.size()={cross_mask.size()}')
+            # logging.info(f'cross_mask_asr.size()={cross_mask_asr.size()}')
+            z = self.dropout(self.cross_src_attn(y, y_asr, y_asr, cross_mask))
+            z_asr = self.dropout_asr(self.cross_src_attn_asr(y_asr, y, y, cross_mask_asr))
             if cross_operator == 'sum':
                 x = x + cross_weight * z
+                x_asr = x_asr + cross_weight * z_asr
             elif cross_operator == 'concat':
                 x = self.cross_concat_linear2(torch.cat((x, z), dim=-1))
+                x_asr = self.cross_concat_linear2_asr(torch.cat((x_asr, z_asr), dim=-1))
             else:
                 raise NotImplementedError
         
         x = x + residual
+        x_asr = x_asr + residual_asr
+
+        # logging.info(f'| AFTER CROSS-SOURCE-ATTENTION')
+        # logging.info(f'x.size() = {x.size()}')
+        # logging.info(f'x_asr.size() = {x_asr.size()}')
+        # logging.info(f'----------------------------------')
         
         if not self.normalize_before:
             x = self.norm2(x)
+            x_asr = self.norm2_asr(x)
         
         # Feed forward
         residual = x
+        residual_asr = x_asr
+
         if self.normalize_before:
             x = self.norm3(x)
+            x_asr = self.norm3_asr(x_asr)
         x = residual + self.dropout(self.feed_forward(x))
+        x_asr = residual_asr + self.dropout_asr(self.feed_forward_asr(x_asr))
         if not self.normalize_before:
             x = self.norm3(x)
+            x_asr = self.norm3_asr(x_asr)
 
+        # logging.info(f'| AFTER FEED-FORWARD')
+        # logging.info(f'x.size() = {x.size()}')
+        # logging.info(f'x_asr.size() = {x_asr.size()}')
+        # logging.info(f'----------------------------------')
+        
         if cache is not None:
             x = torch.cat([cache, x], dim=1)
+        if cache_asr is not None:
+            x_asr = torch.cat([cache_asr, x_asr], dim=1)
 
-        return x, tgt_mask, memory, memory_mask, cross, cross_mask, cross_self, cross_src, cross_operator, cross_weight
+        return x, tgt_mask, x_asr, tgt_mask_asr, memory, memory_mask, cross_mask, cross_mask_asr, cross_self, cross_src, \
+                cross_self_from, cross_src_from, cross_operator, cross_weight

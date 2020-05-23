@@ -1231,9 +1231,7 @@ class E2E(STInterface, torch.nn.Module):
                                 count_st[ii] += 1
                                 count_asr[jj] += 1
                             if len(local_best_scores) >= beam:
-                                break                          
-                        # local_best_ids_st = local_best_ids[:,0]
-                        # local_best_ids_asr = local_best_ids[:,1]
+                                break
                     elif local_att_scores is not None:
                         local_best_scores, local_best_ids_st = torch.topk(local_att_scores, beam, dim=1)
                         local_best_scores = local_best_scores.squeeze(0)

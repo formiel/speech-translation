@@ -165,42 +165,60 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
             x_asr = self.output_layer_asr(x_asr)
         return x, tgt_mask, x_asr, tgt_mask_asr
 
-    # def forward_one_step(self, tgt, tgt_mask, memory, cross=None, cross_mask=None, cross_self=False, cross_src=False, cross_operator='sum', cross_weight=0.3, cache=None):
-    #     """Forward one step.
+    def forward_one_step(self, tgt, tgt_mask, tgt_asr, tgt_mask_asr, 
+                        memory, 
+                        cross_mask=None, cross_mask_asr=None, 
+                        cross_self=False, cross_src=False,
+                        cross_self_from="before-self", cross_src_from="before-src", 
+                        cross_operator='sum', cross_weight=0.3, 
+                        cache=None, cache_asr=None):
+        """Forward one step.
 
-    #     :param torch.Tensor tgt: input token ids, int64 (batch, maxlen_out)
-    #     :param torch.Tensor tgt_mask: input token mask,  (batch, maxlen_out)
-    #                                   dtype=torch.uint8 in PyTorch 1.2-
-    #                                   dtype=torch.bool in PyTorch 1.2+ (include 1.2)
-    #     :param torch.Tensor memory: encoded memory, float32  (batch, maxlen_in, feat)
-    #     :param List[torch.Tensor] cache: cached output list of (batch, max_time_out-1, size)
-    #     :return y, cache: NN output value and cache per `self.decoders`.
-    #         `y.shape` is (batch, maxlen_out, token)
-    #     :rtype: Tuple[torch.Tensor, List[torch.Tensor]]
-    #     """
-    #     x = self.embed(tgt)
-    #     if cache is None:
-    #         cache = self.init_state()
-    #     new_cache = []
-    #     for c, decoder in zip(cache, self.decoders):
-    #         # x, tgt_mask, memory, memory_mask = decoder(x, tgt_mask, memory, None, cache=c)
-    #         x, tgt_mask, memory, memory_mask, _, _, _, _, _, _ = decoder(x, tgt_mask, memory, None, cross, cross_mask, 
-    #                                                                     cross_self, cross_src, cross_operator, cross_weight, cache=c)
-    #         new_cache.append(x)
+        :param torch.Tensor tgt: input token ids, int64 (batch, maxlen_out)
+        :param torch.Tensor tgt_mask: input token mask,  (batch, maxlen_out)
+                                      dtype=torch.uint8 in PyTorch 1.2-
+                                      dtype=torch.bool in PyTorch 1.2+ (include 1.2)
+        :param torch.Tensor memory: encoded memory, float32  (batch, maxlen_in, feat)
+        :param List[torch.Tensor] cache: cached output list of (batch, max_time_out-1, size)
+        :return y, cache: NN output value and cache per `self.decoders`.
+            `y.shape` is (batch, maxlen_out, token)
+        :rtype: Tuple[torch.Tensor, List[torch.Tensor]]
+        """
+        x = self.embed(tgt)
+        x_asr = self.embed_asr(tgt_asr)
+        if cache is None:
+            cache = self.init_state()
+        if cache_asr is None:
+            cache_asr = self.init_state()
+        new_cache = []
+        new_cache_asr = []
+        for c, c_asr, dual_decoder in zip(cache, cache_asr, self.dualdecoders):
+            # x, tgt_mask, memory, memory_mask = decoder(x, tgt_mask, memory, None, cache=c)
+            x, tgt_mask, x_asr, tgt_mask_asr, memory, _, _, _, _, _, _, _, _, _ = dual_decoder(x, tgt_mask, x_asr, tgt_mask_asr,
+                                                                                                                memory, None, cross_mask, cross_mask_asr, 
+                                                                                                                cross_self, cross_src, 
+                                                                                                                cross_self_from, cross_src_from,
+                                                                                                                cross_operator, cross_weight, 
+                                                                                                                cache=c, cache_asr=c_asr)
+            new_cache.append(x)
+            new_cache_asr.append(x_asr)
 
-    #     if self.normalize_before:
-    #         y = self.after_norm(x[:, -1])
-    #     else:
-    #         y = x[:, -1]
-    #     if self.output_layer is not None:
-    #         y = torch.log_softmax(self.output_layer(y), dim=-1)
+        if self.normalize_before:
+            y = self.after_norm(x[:, -1])
+            y_asr = self.after_norm_asr(x_asr[:, -1])
+        else:
+            y = x[:, -1]
+            y_asr = x_asr[:, -1]
+        if self.output_layer is not None:
+            y = torch.log_softmax(self.output_layer(y), dim=-1)
+            y_asr = torch.log_softmax(self.output_layer_asr(y_asr), dim=-1)
 
-    #     return y, new_cache
+        return y, new_cache, y_asr, new_cache_asr
 
-    # # beam search API (see ScorerInterface)
-    # def init_state(self, x=None):
-    #     """Get an initial state for decoding."""
-    #     return [None for i in range(len(self.decoders))]
+    # beam search API (see ScorerInterface)
+    def init_state(self, x=None):
+        """Get an initial state for decoding."""
+        return [None for i in range(len(self.dualdecoders))]
 
     # def score(self, ys, state, x):
     #     """Score."""

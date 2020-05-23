@@ -29,8 +29,10 @@ decode_config=./conf/tuning/${decode}
 iter=$3
 if [[ $iter -gt 0 ]]; then
     trans_model=model.${iter}k.acc.best
-else
+elif [[ $iter -eq 0 ]]; then
     trans_model=model.acc.best
+else
+    trans_model=""
 fi
 echo "*** trans_model: ${trans_model} ***"
 

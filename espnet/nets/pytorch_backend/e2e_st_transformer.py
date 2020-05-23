@@ -1134,14 +1134,16 @@ class E2E(STInterface, torch.nn.Module):
             for idx, hyp in enumerate(hyps):
                 # get nbest local scores and their ids
                 if hyp['yseq'][-1] == self.eos and i > 2:
-                    ys_mask = torch.ones_like(subsequent_mask(len(hyp['yseq'])).unsqueeze(0))
+                    # ys_mask = torch.ones_like(subsequent_mask(len(hyp['yseq'])).unsqueeze(0)) # temporarily deactivated
+                    ys_mask = subsequent_mask(len(hyp['yseq'])).unsqueeze(0)
                     ys = torch.tensor(hyp['yseq']).unsqueeze(0)
                 else:
                     ys_mask = subsequent_mask(i + 1).unsqueeze(0)
                     ys = torch.tensor(hyp['yseq']).unsqueeze(0)
 
                 if hyp['yseq_asr'][-1] == self.eos and i > 2:
-                    ys_mask_asr = torch.ones_like(subsequent_mask(len(hyp['yseq_asr'])).unsqueeze(0))
+                    # ys_mask_asr = torch.ones_like(subsequent_mask(len(hyp['yseq_asr'])).unsqueeze(0)) # temporarily deactivated
+                    ys_mask_asr = subsequent_mask(len(hyp['yseq_asr'])).unsqueeze(0)
                     ys_asr = torch.tensor(hyp['yseq_asr']).unsqueeze(0)
                 else:
                     ys_mask_asr = subsequent_mask(i + 1).unsqueeze(0)

@@ -1,11 +1,11 @@
 batchsize: 0
 beam-size: 15
-penalty: 0.6
+penalty: 0.5
 maxlenratio: 0.3
 minlenratio: 0.0
 
 beam-size-asr: 15
-penalty-asr: 0.6
+penalty-asr: 0.5
 maxlenratio-asr: 0.3
 minlenratio-asr: 0.0
 
@@ -14,5 +14,4 @@ trans: False
 recog-and-trans: True
 
 beam-search-type: sum
-ratio-diverse-st: 0.25
-ratio-diverse-asr: 0.25
+ratio-diverse-asr: 0.75

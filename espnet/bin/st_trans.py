@@ -97,7 +97,9 @@ def get_parser():
                         help='Input length ratio to obtain min output length')
     parser.add_argument('--score-is-prob', default=False, type=strtobool,
                         help='Score is probability or not when decoding.')
-    parser.add_argument('--ratio-diversity', type=float, default=0.0,
+    parser.add_argument('--ratio-diverse-st', type=float, default=0.0,
+                        help='Input length ratio to obtain min output length')
+    parser.add_argument('--ratio-diverse-asr', type=float, default=0.0,
                         help='Input length ratio to obtain min output length')
     # rnnlm related
     parser.add_argument('--rnnlm', type=str, default=None,

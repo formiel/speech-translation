@@ -14,5 +14,4 @@ trans: False
 recog-and-trans: True
 
 beam-search-type: sum
-ratio-diverse-st: 0.25
-ratio-diverse-asr: 0.25
+ratio-diverse-asr: 0.75

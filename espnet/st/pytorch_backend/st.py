@@ -826,7 +826,8 @@ def trans(args):
                                                                         decode_asr_weight=args.decode_asr_weight,
                                                                         score_is_prob=args.score_is_prob,
                                                                         ratio_diverse_st=args.ratio_diverse_st,
-                                                                        ratio_diverse_asr=args.ratio_diverse_asr)
+                                                                        ratio_diverse_asr=args.ratio_diverse_asr,
+                                                                        debug=args.debug)
                         new_js[name] = add_results_to_json_st_asr(js[name], nbest_hyps, train_args.char_list)
                     elif args.beam_search_type == 'separate':
                         logging.info('=== Beam search separately ===')

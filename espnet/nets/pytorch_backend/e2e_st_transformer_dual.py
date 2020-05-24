@@ -500,7 +500,8 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                                     decode_asr_weight=1.0, 
                                     score_is_prob=False, 
                                     ratio_diverse_st=0.0,
-                                    ratio_diverse_asr=0.0):
+                                    ratio_diverse_asr=0.0,
+                                    debug=False):
         """Recognize and translate input speech.
 
         :param ndnarray x: input acoustic feature (B, T, D) or (T, D)
@@ -579,7 +580,6 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                 # get nbest local scores and their ids
                 if hyp['yseq'][-1] == self.eos and i > 2:
                     ys_mask = torch.ones_like(subsequent_mask(len(hyp['yseq'])).unsqueeze(0))
-                    # ys_mask = subsequent_mask(len(hyp['yseq'])).unsqueeze(0)
                     ys = torch.tensor(hyp['yseq']).unsqueeze(0)
                 else:
                     ys_mask = subsequent_mask(i + 1).unsqueeze(0)
@@ -587,7 +587,6 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
 
                 if hyp['yseq_asr'][-1] == self.eos and i > 2:
                     ys_mask_asr = torch.ones_like(subsequent_mask(len(hyp['yseq_asr'])).unsqueeze(0))
-                    # ys_mask_asr = subsequent_mask(len(hyp['yseq_asr'])).unsqueeze(0)
                     ys_asr = torch.tensor(hyp['yseq_asr']).unsqueeze(0)
                 else:
                     ys_mask_asr = subsequent_mask(i + 1).unsqueeze(0)
@@ -608,23 +607,33 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                                                                                                           cross_src_from=self.cross_src_from,
                                                                                                           cross_operator=self.cross_operator, 
                                                                                                           cross_weight=self.cross_weight)
-                    else:
+                    if hyp['yseq'][-1] == self.eos and i > 2:
                         local_att_scores = None
+                    if hyp['yseq_asr'][-1] == self.eos and i > 2:
                         local_att_scores_asr = None
 
                 if ratio_diverse_st <= 0 and ratio_diverse_asr <=0:
                     if idx == 0:
                         logging.info(f'*** Not force diversity ***')
                     if local_att_scores is not None and local_att_scores_asr is not None:
-                        # Construct score matrix V x V (columns: ST, rows: ASR)
-                        score_matrix = (torch.mm(torch.t(local_att_scores), torch.ones_like(local_att_scores))
-                                        + torch.mm(torch.t(torch.ones_like(local_att_scores_asr)), local_att_scores_asr)) 
-                        H, W = score_matrix.shape
-                        local_best_scores, indices = score_matrix.view(-1).topk(beam)
-                        # local_best_scores = local_best_scores.unsqueeze(0)
-                        local_best_ids = torch.cat(((indices // W).unsqueeze(1), (indices % W).unsqueeze(1)), dim=1)
-                        local_best_ids_st = local_best_ids[:,0]
-                        local_best_ids_asr = local_best_ids[:,1]
+                        # # Construct score matrix V x V (columns: ST, rows: ASR)
+                        # score_matrix = (torch.mm(torch.t(local_att_scores), torch.ones_like(local_att_scores))
+                        #                 + torch.mm(torch.t(torch.ones_like(local_att_scores_asr)), local_att_scores_asr)) 
+                        # H, W = score_matrix.shape
+                        # local_best_scores, indices = score_matrix.view(-1).topk(beam)
+                        # local_best_ids = torch.cat(((indices // W).unsqueeze(1), (indices % W).unsqueeze(1)), dim=1)
+                        # local_best_ids_st = local_best_ids[:,0]
+                        # local_best_ids_asr = local_best_ids[:,1]
+
+                        x_k, ix_k = local_att_scores.topk(beam)
+                        y_k, iy_k = local_att_scores_asr.topk(beam)
+                        s_k = (torch.mm(torch.t(x_k), torch.ones_like(x_k))
+                                        + torch.mm(torch.t(torch.ones_like(y_k)), y_k))
+                        local_best_scores , iv_k = s_k.view(-1).topk(beam)
+                        A = torch.LongTensor([[i, j] for i in ix_k.squeeze(0) for j in iy_k.squeeze(0)])
+                        ivk = A[iv_k]
+                        local_best_ids_st = A[:,0]
+                        local_best_ids_asr = A[:,1]
                     elif local_att_scores is not None:
                         local_best_scores, local_best_ids_st = torch.topk(local_att_scores, beam, dim=1)
                         local_best_scores = local_best_scores.squeeze(0)

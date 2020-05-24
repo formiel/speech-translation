@@ -88,6 +88,7 @@ def get_parser():
                         help='')
     parser.add_argument('--recog', default=False, type=strtobool)
     parser.add_argument('--trans', default=False, type=strtobool)
+    parser.add_argument('--debug', default=False, type=strtobool)
     parser.add_argument('--recog-and-trans', default=False, type=strtobool)
     parser.add_argument('--beam-search-type', type=str, choices=['sum', 'separate'], default='separate',
                         help='Beam search type when doing recognition and translation simultaneously.')

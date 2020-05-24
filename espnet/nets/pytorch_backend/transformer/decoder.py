@@ -81,13 +81,16 @@ class Decoder(ScorerInterface, torch.nn.Module):
         cross_src_attn = None
         if cross_operator:
             if 'src_' in cross_operator:
-                cross_src_attn = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
+                # cross_src_attn = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
+                cross_src_attn = True
 
             if 'self_' in cross_operator:
                 if cross_shared and cross_src_attn is not None:
-                    cross_self_attn = cross_src_attn
+                    # cross_self_attn = cross_src_attn
+                    cross_self_attn = True # TODO: implement shared self and source
                 else:
-                    cross_self_attn = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
+                    # cross_self_attn = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
+                    cross_self_attn = True
             if 'concat' in cross_operator:
                 cross_operator = 'concat'
             elif 'sum' in cross_operator:
@@ -105,8 +108,8 @@ class Decoder(ScorerInterface, torch.nn.Module):
                 dropout_rate,
                 normalize_before,
                 concat_after,
-                cross_self_attn=cross_self_attn,
-                cross_src_attn=cross_src_attn,
+                cross_self_attn=MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate) if cross_self_attn else None,
+                cross_src_attn=MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate) if cross_src_attn else None,
                 cross_operator=cross_operator,
                 cross_shared=cross_shared
             )

@@ -107,7 +107,7 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
             cross_self_attn_asr = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
             cross_src_attn_asr = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
 
-        self.dualdecoders = repeat(
+        self.dual_decoders = repeat(
             num_blocks,
             lambda: DualDecoderLayer(
                 attention_dim, attention_dim,
@@ -153,7 +153,7 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
         """
         x = self.embed(tgt)
         x_asr = self.embed_asr(tgt_asr)
-        x, tgt_mask, x_asr, tgt_mask_asr, memory, memory_mask, _, _, _, _, _, _ , _, _ = self.dualdecoders(x, tgt_mask, x_asr, tgt_mask_asr, 
+        x, tgt_mask, x_asr, tgt_mask_asr, memory, memory_mask, _, _, _, _, _, _ , _, _ = self.dual_decoders(x, tgt_mask, x_asr, tgt_mask_asr, 
                                                                                                     memory, memory_mask, cross_mask, cross_mask_asr, 
                                                                                                     cross_self, cross_src, cross_self_from, cross_src_from,
                                                                                                     cross_operator, cross_weight)
@@ -192,7 +192,7 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
             cache_asr = self.init_state()
         new_cache = []
         new_cache_asr = []
-        for c, c_asr, dual_decoder in zip(cache, cache_asr, self.dualdecoders):
+        for c, c_asr, dual_decoder in zip(cache, cache_asr, self.dual_decoders):
             # x, tgt_mask, memory, memory_mask = decoder(x, tgt_mask, memory, None, cache=c)
             x, tgt_mask, x_asr, tgt_mask_asr, memory, _, _, _, _, _, _, _, _, _ = dual_decoder(x, tgt_mask, x_asr, tgt_mask_asr,
                                                                                                                 memory, None, cross_mask, cross_mask_asr, 
@@ -218,7 +218,7 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
     # beam search API (see ScorerInterface)
     def init_state(self, x=None):
         """Get an initial state for decoding."""
-        return [None for i in range(len(self.dualdecoders))]
+        return [None for i in range(len(self.dual_decoders))]
 
     # def score(self, ys, state, x):
     #     """Score."""

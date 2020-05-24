@@ -195,7 +195,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         #     normalize_before=self.normalize_before,
         #     cross_operator=self.cross_operator
         # )
-        self.dual_deccoder = DualDecoder(
+        self.dual_decoder = DualDecoder(
                 odim=odim,
                 attention_dim=args.adim,
                 attention_heads=args.aheads,
@@ -374,7 +374,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
 
         cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, self.ignore_id, wait_k_cross=self.wait_k_asr)
         cross_mask_asr = create_cross_mask(ys_in_pad_src, ys_in_pad, self.ignore_id, wait_k_cross=0)
-        pred_pad, pred_mask, pred_pad_asr, pred_mask_asr = self.dual_deccoder(ys_in_pad, ys_mask, ys_in_pad_src, ys_mask_src,
+        pred_pad, pred_mask, pred_pad_asr, pred_mask_asr = self.dual_decoder(ys_in_pad, ys_mask, ys_in_pad_src, ys_mask_src,
                                                                                 hs_pad, hs_mask, cross_mask, cross_mask_asr,
                                                                                 cross_self=self.cross_self, cross_src=self.cross_src,
                                                                                 cross_self_from=self.cross_self_from,
@@ -600,7 +600,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                     local_att_scores = traced_decoder(ys, ys_mask, enc_output)[0]
                 else:
                     if hyp['yseq'][-1] != self.eos or hyp['yseq_asr'][-1] != self.eos or i < 2:
-                        local_att_scores, _, local_att_scores_asr, _ = self.dual_deccoder.forward_one_step(ys, ys_mask, ys_asr, ys_mask_asr, enc_output,
+                        local_att_scores, _, local_att_scores_asr, _ = self.dual_decoder.forward_one_step(ys, ys_mask, ys_asr, ys_mask_asr, enc_output,
                                                                                                           cross_mask=None, cross_mask_asr=None,
                                                                                                           cross_self=self.cross_self, cross_src=self.cross_src,
                                                                                                           cross_self_from=self.cross_self_from,

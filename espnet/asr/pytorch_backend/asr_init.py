@@ -168,10 +168,13 @@ def get_trained_model_state_dict(model_path):
     else:
         model_module = "espnet.nets.pytorch_backend.e2e_asr:E2E"
 
+    logging.info(f'Loading pre-trained model...')
     model_class = dynamic_import(model_module)
     model = model_class(idim, odim, args)
-    logging.info(f'Pre-trained model is loaded.')
+    # logging.info(f'| key in init pre-trained model: {model.state_dict().keys()}')
+
     torch_load(model_path, model)
+    logging.info(f'Pre-trained model is loaded.')
     assert isinstance(model, MTInterface) or \
         isinstance(model, ASRInterface) or \
         isinstance(model, TTSInterface)
@@ -200,7 +203,7 @@ def load_trained_modules(idim, odim, args, interface=ASRInterface):
     model_class = dynamic_import(args.model_module)
     main_model = model_class(idim, odim, args)
     assert isinstance(main_model, interface)
-    logging.info('BEFORE loading pretrained models: {}'.format(sum(p.sum().item() for p in main_model.parameters())))
+    logging.info('| Before loading pretrained models: {}'.format(sum(p.sum().item() for p in main_model.parameters())))
 
     main_state_dict = main_model.state_dict()
 
@@ -212,7 +215,7 @@ def load_trained_modules(idim, odim, args, interface=ASRInterface):
                 model_state_dict, is_lm = get_trained_model_state_dict(model_path)
 
                 modules = filter_modules(model_state_dict, modules)
-                logging.info(f'modules: {modules}')
+
                 if is_lm:
                     partial_state_dict, modules = get_partial_lm_state_dict(model_state_dict, modules)
                 else:
@@ -241,6 +244,6 @@ def load_trained_modules(idim, odim, args, interface=ASRInterface):
 
     main_model.load_state_dict(main_state_dict)
 
-    logging.info('AFTER loading pretrained models: {}'.format(sum(p.sum().item() for p in main_model.parameters())))
+    logging.info('| After loading pretrained models: {}'.format(sum(p.sum().item() for p in main_model.parameters())))
 
     return main_model

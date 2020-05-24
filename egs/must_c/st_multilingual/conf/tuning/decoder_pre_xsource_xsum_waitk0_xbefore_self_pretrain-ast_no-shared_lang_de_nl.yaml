@@ -60,7 +60,7 @@ transformer-init: pytorch
 
 # pre-training related
 enc-init-mods: encoder.embed,encoder.encoders,encoder.after_norm
-dec-init-mods: decoder.embed,decoder.decoders,decoder.after_norm,decoder.output_layer
+dec-init-mods: decoder.embed,decoder.decoders,decoder.after_norm,decoder.output_layer,decoder_asr.embed,decoder_asr.decoders,decoder_asr.after_norm,decoder_asr.output_layer
 
 enc-init: /gpfswork/rech/dbn/umz16dj/espnet/egs/must_c/st_multilingual/exp/decoder_pre_1decoder_lang_de_nl/results/model.acc.best
 dec-init: /gpfswork/rech/dbn/umz16dj/espnet/egs/must_c/st_multilingual/exp/decoder_pre_1decoder_lang_de_nl/results/model.acc.best

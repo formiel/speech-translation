@@ -58,6 +58,40 @@ def get_partial_state_dict(model_state_dict, modules):
     return new_state_dict
 
 
+def get_partial_state_dict_dual_decoders(model_state_dict, modules):
+    """Create state_dict with specified modules matching input model modules.
+
+    Note that get_partial_lm_state_dict is used if a LM specified.
+
+    Args:
+        model_state_dict (OrderedDict): trained model state_dict
+        modules (list): specified module list for transfer
+
+    Return:
+        new_state_dict (OrderedDict): the updated state_dict
+
+    """
+    new_state_dict = OrderedDict()
+    new_modules = []
+    pretrained_keys = list(model_state_dict.keys())
+    submodules = ['embed', 'after_norm', 'output_layer', 'self_attn', 'src_attn', 
+                'feed_forward', 'norm1', 'norm2', 'norm3', 'dropout']
+
+    for key, value in model_state_dict.items():
+        if any(key.startswith(m) for m in modules):
+            key = key.replace('decoders', 'dual_decoders')
+            if '_asr' not in key:
+                new_mod = key.replace('decoder.', 'dual_decoder.')
+            else:
+                new_mod = key.replace('decoder_asr.', 'dual_decoder.')
+                for k in submodules:
+                    new_mod = new_mod.replace(k, k+'_asr')
+            new_state_dict[new_mod] = value
+            new_modules += [new_mod]
+
+    return new_state_dict, new_modules
+
+
 def get_partial_lm_state_dict(model_state_dict, modules):
     """Create compatible ASR state_dict from model_state_dict (LM).
 
@@ -104,6 +138,45 @@ def filter_modules(model_state_dict, modules):
 
     mods_model = list(model_state_dict.keys())
     for mod in modules:
+        if any(key.startswith(mod) for key in mods_model):
+            new_mods += [mod]
+        else:
+            incorrect_mods += [mod]
+
+    if incorrect_mods:
+        logging.warning("module(s) %s don\'t match or (partially match) "
+                        "available modules in model.", incorrect_mods)
+        logging.warning('for information, the existing modules in model are:')
+        logging.warning('%s', mods_model)
+
+    return new_mods
+
+
+def filter_modules_dual_decoders(model_state_dict, modules):
+    """Filter non-matched modules in module_state_dict.
+
+    Args:
+        model_state_dict (OrderedDict): trained model state_dict
+        modules (list): specified module list for transfer
+
+    Return:
+        new_mods (list): the update module list
+
+    """
+    new_mods = []
+    incorrect_mods = []
+
+    mods_model = list(model_state_dict.keys())
+    new_mods = []
+
+    # Create tuple of (k_pretrained, k_new)
+    for new_mod in modules:
+        new_mod = new_mod.replace('dual_decoders', 'decoders')
+        if '_asr' not in new_mod:
+            mod = new_mod.replace('dual_decoder.', 'decoder.')
+        else:
+            mod = new_mod.replace('_asr', '').replace('dual_decoder.', 'decoder_asr.')
+
         if any(key.startswith(mod) for key in mods_model):
             new_mods += [mod]
         else:
@@ -171,7 +244,6 @@ def get_trained_model_state_dict(model_path):
     logging.info(f'Loading pre-trained model...')
     model_class = dynamic_import(model_module)
     model = model_class(idim, odim, args)
-    # logging.info(f'| key in init pre-trained model: {model.state_dict().keys()}')
 
     torch_load(model_path, model)
     logging.info(f'Pre-trained model is loaded.')
@@ -199,6 +271,7 @@ def load_trained_modules(idim, odim, args, interface=ASRInterface):
     dec_model_path = args.dec_init
     enc_modules = args.enc_init_mods
     dec_modules = args.dec_init_mods
+    dual_modules = None
 
     model_class = dynamic_import(args.model_module)
     main_model = model_class(idim, odim, args)
@@ -214,22 +287,31 @@ def load_trained_modules(idim, odim, args, interface=ASRInterface):
             if os.path.isfile(model_path):
                 model_state_dict, is_lm = get_trained_model_state_dict(model_path)
 
-                modules = filter_modules(model_state_dict, modules)
+                if all(mod.startswith('dual_decoder') for mod in modules):
+                    dual_modules = modules
+                    modules = filter_modules_dual_decoders(model_state_dict, modules)
+                else:
+                    modules = filter_modules(model_state_dict, modules)
 
                 if is_lm:
                     partial_state_dict, modules = get_partial_lm_state_dict(model_state_dict, modules)
                 else:
-                    partial_state_dict = get_partial_state_dict(model_state_dict, modules)
+                    if dual_modules is not None:
+                        partial_state_dict, modules = get_partial_state_dict_dual_decoders(model_state_dict, modules)
+                    else:
+                        partial_state_dict = get_partial_state_dict(model_state_dict, modules)
 
                     if partial_state_dict:
                         if transfer_verification(main_state_dict, partial_state_dict, modules):
-                            logging.warning('loading %s from model: %s', modules, model_path)
+                            logging.warning('loading %s from model: %s', list(set(['.'.join(m.split('.')[:2]) for m in modules])), model_path)
+                            
                             for k in partial_state_dict.keys():
                                 logging.warning('override %s' % k)
                             main_state_dict.update(partial_state_dict)
                         else:
                             logging.warning('modules %s in model %s don\'t match your training config',
                                             modules, model_path)
+                        # Random check
                         k1 = 'decoder.decoders.0.src_attn.linear_v.weight'
                         k2 = 'decoder_asr.decoders.0.src_attn.linear_v.weight'
                         if k1 in partial_state_dict and k2 in partial_state_dict:

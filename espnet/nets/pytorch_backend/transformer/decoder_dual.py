@@ -90,30 +90,37 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
         else:
             raise NotImplementedError("only `embed` or torch.nn.Module is supported.")
         self.normalize_before = normalize_before
-        self_attn = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
-        src_attn = MultiHeadedAttention(attention_heads, attention_dim, src_attention_dropout_rate)
-        feedforward = PositionwiseFeedForward(attention_dim, linear_units, dropout_rate)
-        self_attn_asr = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
-        src_attn_asr = MultiHeadedAttention(attention_heads, attention_dim, src_attention_dropout_rate)
-        feedforward_asr = PositionwiseFeedForward(attention_dim, linear_units, dropout_rate)
+        # self_attn = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
+        # src_attn = MultiHeadedAttention(attention_heads, attention_dim, src_attention_dropout_rate)
+        # feedforward = PositionwiseFeedForward(attention_dim, linear_units, dropout_rate)
+        # self_attn_asr = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
+        # src_attn_asr = MultiHeadedAttention(attention_heads, attention_dim, src_attention_dropout_rate)
+        # feedforward_asr = PositionwiseFeedForward(attention_dim, linear_units, dropout_rate)
 
-        cross_self_attn = None
-        cross_src_attn = None
-        cross_self_attn_asr = None
-        cross_src_attn_asr = None
-        if cross_operator:
-            cross_self_attn = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
-            cross_src_attn = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
-            cross_self_attn_asr = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
-            cross_src_attn_asr = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
+        # cross_self_attn = None
+        # cross_src_attn = None
+        # cross_self_attn_asr = None
+        # cross_src_attn_asr = None
+        # if cross_operator:
+        #     cross_self_attn = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
+        #     cross_src_attn = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
+        #     cross_self_attn_asr = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
+        #     cross_src_attn_asr = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
 
         self.dual_decoders = repeat(
             num_blocks,
             lambda: DualDecoderLayer(
                 attention_dim, attention_dim,
-                self_attn, src_attn, feedforward,
-                self_attn_asr, src_attn_asr, feedforward_asr,
-                cross_self_attn, cross_self_attn_asr, cross_src_attn, cross_src_attn_asr,
+                MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate), 
+                MultiHeadedAttention(attention_heads, attention_dim, src_attention_dropout_rate), 
+                PositionwiseFeedForward(attention_dim, linear_units, dropout_rate),
+                MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate), 
+                MultiHeadedAttention(attention_heads, attention_dim, src_attention_dropout_rate), 
+                PositionwiseFeedForward(attention_dim, linear_units, dropout_rate),
+                MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate), 
+                MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate), 
+                MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate), 
+                MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate),
                 dropout_rate,
                 normalize_before,
                 concat_after,

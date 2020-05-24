@@ -35,8 +35,8 @@ maxlen-in: 512  # if input length  > maxlen-in, batchsize is automatically reduc
 maxlen-out: 150 # if output length > maxlen-out, batchsize is automatically reduced
 
 # saving interval
-report-interval-iters: 1
-save-interval-iters: 1
+report-interval-iters: 1000
+save-interval-iters: 1000
 n-iter-processes: 24
 
 # optimization related
@@ -45,8 +45,8 @@ opt: noam
 accum-grad: 2
 grad-clip: 5
 patience: 5
-epochs: 30  # longer version of "short" for SpecAugment: 30ep->50ep
-time-limit: 0.1
+epochs: 35  # longer version of "short" for SpecAugment: 30ep->50ep
+time-limit: 20
 dropout-rate: 0.1
 
 # transformer specific setting
@@ -62,6 +62,7 @@ transformer-init: pytorch
 # pre-training related
 enc-init-mods: encoder.embed,encoder.encoders,encoder.after_norm
 # dec-init-mods: decoder.embed,decoder.decoders,decoder.after_norm,decoder.output_layer,decoder_asr.embed,decoder_asr.decoders,decoder_asr.after_norm,decoder_asr.output_layer
+dec-init-mods: dual_decoder.embed,dual_decoder.embed_asr,dual_decoder.dual_decoders,dual_decoder.dual_decoders_asr,dual_decoder.after_norm,dual_decoder.after_norm_asr,dual_decoder.output_layer,dual_decoder.output_layer_asr
 
-enc-init: /gpfsscratch/rech/dbn/umz16dj/Experiments_espnet/exp/decoder_pre_1decoder_lang_de_nl/results/model.40k.acc.best
-# dec-init: /gpfsscratch/rech/dbn/umz16dj/Experiments_espnet/exp/decoder_pre_1decoder_lang_de_nl/results/model.40k.acc.best
+enc-init: /gpfsscratch/rech/dbn/umz16dj/Experiments_espnet/exp/decoder_pre_1decoder_lang_de_nl/results/model.acc.best
+dec-init: /gpfsscratch/rech/dbn/umz16dj/Experiments_espnet/exp/decoder_pre_1decoder_lang_de_nl/results/model.acc.best

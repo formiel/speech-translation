@@ -29,7 +29,10 @@ class DecoderLayer(nn.Module):
     """
 
     def __init__(self, size, self_attn, src_attn, feed_forward, dropout_rate,
-                 normalize_before=True, concat_after=False, cross_self_attn=None, cross_src_attn=None, cross_operator=None, cross_shared=False):
+                 normalize_before=True, concat_after=False, 
+                 cross_self_attn=None, cross_src_attn=None, 
+                 cross_operator=None, cross_shared=False,
+                 cross_weight_learnable=False, cross_weight=0.0):
         """Construct an DecoderLayer object."""
         super(DecoderLayer, self).__init__()
         self.size = size
@@ -51,11 +54,17 @@ class DecoderLayer(nn.Module):
                 self.cross_attn = None
             self.cross_shared = True
 
-        if (cross_self_attn is not None or cross_src_attn is not None) and cross_operator == "concat":
-            self.cross_concat_linear1 = nn.Linear(size + size, size)
-            self.cross_concat_linear2 = nn.Linear(size + size, size)
-        # if cross_src_attn is not None and cross_operator == "concat":
-        #     self.cross_concat_linear2 = nn.Linear(size + size, size)
+        self.cross_operator = cross_operator
+        if cross_self_attn is not None or cross_src_attn is not None:
+            if cross_operator == "concat":
+                self.cross_concat_linear1 = nn.Linear(size + size, size)
+                self.cross_concat_linear2 = nn.Linear(size + size, size)
+            elif cross_operator == "sum":
+                if cross_weight_learnable:
+                    assert float(cross_weight) > 0
+                    self.cross_weight = torch.nn.Parameter(torch.tensor(cross_weight))
+                else:
+                    self.cross_weight = cross_weight 
 
         self.norm1 = LayerNorm(size)
         self.norm2 = LayerNorm(size)
@@ -67,7 +76,7 @@ class DecoderLayer(nn.Module):
             self.concat_linear1 = nn.Linear(size + size, size)
             self.concat_linear2 = nn.Linear(size + size, size)
 
-    def forward(self, tgt, tgt_mask, memory, memory_mask, cross=None, cross_mask=None, cross_self=False, cross_src=False, cross_operator='sum', cross_weight=0.3, cache=None):
+    def forward(self, tgt, tgt_mask, memory, memory_mask, cross=None, cross_mask=None, cross_self=False, cross_src=False, cache=None):
         """Compute decoded features.
 
         Args:
@@ -116,9 +125,9 @@ class DecoderLayer(nn.Module):
             # mask = torch.einsum('bii,bkk->bik', tgt_q_mask, cross_mask)
             # z = self.dropout(self.cross_attn(tgt_q, cross, cross, mask))
             z = self.dropout(cross_self_attn(tgt_q, cross, cross, cross_mask))
-            if cross_operator == 'sum':
-                x = x + cross_weight*z
-            elif cross_operator == 'concat':
+            if self.cross_operator == 'sum':
+                x = x + self.cross_weight * z
+            elif self.cross_operator == 'concat':
                 x = self.cross_concat_linear1(torch.cat((x, z), dim=-1))
             else:
                 raise NotImplementedError
@@ -147,9 +156,9 @@ class DecoderLayer(nn.Module):
             # mask = torch.einsum('bii->bi', cross_mask).unsqueeze(1)
             # z = self.dropout(self.cross_attn(y, cross, cross, mask))
             z = self.dropout(cross_src_attn(y, cross, cross, cross_mask))
-            if cross_operator == 'sum':
-                x = x + cross_weight * z
-            elif cross_operator == 'concat':
+            if self.cross_operator == 'sum':
+                x = x + self.cross_weight * z
+            elif self.cross_operator == 'concat':
                 x = self.cross_concat_linear2(torch.cat((x, z), dim=-1))
             else:
                 raise NotImplementedError
@@ -170,4 +179,4 @@ class DecoderLayer(nn.Module):
         if cache is not None:
             x = torch.cat([cache, x], dim=1)
 
-        return x, tgt_mask, memory, memory_mask, cross, cross_mask, cross_self, cross_src, cross_operator, cross_weight
+        return x, tgt_mask, memory, memory_mask, cross, cross_mask, cross_self, cross_src

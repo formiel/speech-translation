@@ -142,6 +142,7 @@ class E2E(STInterface, torch.nn.Module):
         self.cross_src_from = getattr(args, "cross_src_from", "embedding")
         self.cross_self_from = getattr(args, "cross_self_from", "embedding")
         self.cross_shared = getattr(args, "cross_shared", False)
+        self.cross_weight_learnable = getattr(args, "cross_weight_learnable", False)
 
         # one-to-many ST experiments
         self.one_to_many = getattr(args, "one_to_many", False)
@@ -206,7 +207,9 @@ class E2E(STInterface, torch.nn.Module):
             src_attention_dropout_rate=args.transformer_attn_dropout_rate,
             normalize_before=self.normalize_before,
             cross_operator=self.cross_operator,
-            cross_shared=self.cross_shared
+            cross_shared=self.cross_shared,
+            cross_weight_learnable=self.cross_weight_learnable,
+            cross_weight=self.cross_weight,
         )
         self.pad = 0
         self.sos = odim - 1
@@ -237,7 +240,9 @@ class E2E(STInterface, torch.nn.Module):
                 src_attention_dropout_rate=args.transformer_attn_dropout_rate,
                 normalize_before=self.normalize_before,
                 cross_operator=self.cross_operator,
-                cross_shared=self.cross_shared
+                cross_shared=self.cross_shared,
+                cross_weight_learnable=self.cross_weight_learnable,
+                cross_weight=self.cross_weight,
             )
             if self.num_decoders == 1:
                 logging.info('*** Use 1 decoder *** ')
@@ -352,26 +357,19 @@ class E2E(STInterface, torch.nn.Module):
                 ys_in_pad_src = torch.cat([tgt_lang_ids_src, ys_in_pad_src[:, 1:]], dim=1)
 
         ys_mask = target_mask(ys_in_pad, self.ignore_id) # bs x max_lens x max_lens
-        # logging.info(f'ys_mask.size() = {ys_mask.size()}')
 
         if self.do_asr:
             ys_mask_src = target_mask(ys_in_pad_src, self.ignore_id) # bs x max_lens x max_lens_src
-            # logging.info(f'ys_mask_src.size() = {ys_mask_src.size()}')
 
         if self.cross_to_st:
             cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, self.ignore_id, wait_k_cross=self.wait_k_asr)
-            # logging.info(f'st cross_mask \t {cross_mask}')
-            # logging.info(f'st cross_mask.size() = {cross_mask.size()}')
             cross_input = self.decoder_asr.embed(ys_in_pad_src)
             if (self.cross_src_from == "before-self" and self.cross_src) or \
                     (self.cross_self_from == "before-self" and self.cross_self): 
                 cross_input = self.decoder_asr.decoders[0].norm1(cross_input)
-            # logging.info(f'st cross_input size = {cross_input.size()}')
-            # logging.info(f'st cross_input norm = {torch.norm(cross_input)}')
             pred_pad, pred_mask = self.decoder(ys_in_pad, ys_mask, hs_pad, hs_mask,
                                         cross=cross_input, cross_mask=cross_mask,
-                                        cross_self=self.cross_self, cross_src=self.cross_src,
-                                        cross_operator=self.cross_operator, cross_weight=self.cross_weight)
+                                        cross_self=self.cross_self, cross_src=self.cross_src)
         else:
             pred_pad, pred_mask = self.decoder(ys_in_pad, ys_mask, hs_pad, hs_mask)
 
@@ -386,19 +384,14 @@ class E2E(STInterface, torch.nn.Module):
             # forward ASR decoder
             if self.cross_to_asr:
                 cross_mask = create_cross_mask(ys_in_pad_src, ys_in_pad, self.ignore_id, wait_k_cross=0)
-                # logging.info(f'asr cross_mask \t {cross_mask}')
-                # logging.info(f'asr cross_mask.size() = {cross_mask.size()}')
                 cross_input = self.decoder.embed(ys_in_pad)
                 if (self.cross_src_from == "before-self" and self.cross_src) or \
                     (self.cross_self_from == "before-self" and self.cross_self):
                     cross_input = self.decoder.decoders[0].norm1(cross_input)
-                # logging.info(f'asr cross_input size = {cross_input.size()}')
-                # logging.info(f'asr cross_input norm = {torch.norm(cross_input)}')
 
                 pred_pad_asr, _ = self.decoder_asr(ys_in_pad_src, ys_mask_src, hs_pad, hs_mask,
                                         cross=cross_input, cross_mask=cross_mask,
-                                        cross_self=self.cross_self, cross_src=self.cross_src,
-                                        cross_operator=self.cross_operator, cross_weight=self.cross_weight)
+                                        cross_self=self.cross_self, cross_src=self.cross_src)
             else:
                 pred_pad_asr, _ = self.decoder_asr(ys_in_pad_src, ys_mask_src, hs_pad, hs_mask)
             # compute loss
@@ -856,8 +849,7 @@ class E2E(STInterface, torch.nn.Module):
                         y_cross = decoder_cross.decoders[0].norm1(y_cross)
                     local_att_scores = decoder.forward_one_step(ys, ys_mask, enc_output, 
                                                                 cross=y_cross, cross_mask=None,
-                                                                cross_self=self.cross_self, cross_src=self.cross_src,
-                                                                cross_operator=self.cross_operator, cross_weight=self.cross_weight)[0]
+                                                                cross_self=self.cross_self, cross_src=self.cross_src)[0]
                     V = local_att_scores.shape[-1]
                     all_scores.append(local_att_scores)
                 local_scores = torch.cat(all_scores, dim=-1)
@@ -1166,15 +1158,13 @@ class E2E(STInterface, torch.nn.Module):
                                 y_cross = self.decoder_asr.decoders[0].norm1(y_cross)
                             local_att_scores = self.decoder.forward_one_step(ys, ys_mask, enc_output, 
                                                                         cross=y_cross, cross_mask=None,
-                                                                        cross_self=self.cross_self, cross_src=self.cross_src,
-                                                                        cross_operator=self.cross_operator, cross_weight=self.cross_weight)[0]
+                                                                        cross_self=self.cross_self, cross_src=self.cross_src)[0]
                         else:
                             local_att_scores = self.decoder.forward_one_step(ys, ys_mask, enc_output)[0]
                         if score_is_prob:
                             local_att_scores = torch.exp(local_att_scores)
                     else:
                         local_att_scores = None
-                    # logging.info(f'i={i}, local_att_scores={local_att_scores}')
                     
                     if hyp['yseq_asr'][-1] != self.eos or i < 2:
                         if self.cross_to_asr:
@@ -1184,15 +1174,13 @@ class E2E(STInterface, torch.nn.Module):
                                  y_cross = self.decoder.decoders[0].norm1(y_cross)
                             local_att_scores_asr = self.decoder_asr.forward_one_step(ys_asr, ys_mask_asr, enc_output,
                                                                         cross=y_cross, cross_mask=None,
-                                                                        cross_self=self.cross_self, cross_src=self.cross_src,
-                                                                        cross_operator=self.cross_operator, cross_weight=self.cross_weight)[0]
+                                                                        cross_self=self.cross_self, cross_src=self.cross_src)[0]
                         else:
                             local_att_scores_asr = self.decoder_asr.forward_one_step(ys_asr, ys_mask_asr, enc_output)[0]
                         if score_is_prob:
                             local_att_scores_asr = torch.exp(local_att_scores_asr)
                     else:
                         local_att_scores_asr = None
-                    # logging.info(f'i={i}, local_att_scores_asr={local_att_scores_asr}')
 
                 if debug:
                     logging.info(f'forward time = {time.time() - start}')

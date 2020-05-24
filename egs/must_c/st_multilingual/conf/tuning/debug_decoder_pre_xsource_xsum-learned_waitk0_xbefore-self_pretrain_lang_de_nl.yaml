@@ -17,12 +17,15 @@ mt-weight: 0.0
 # Cross attention
 lang-tok: decoder-pre
 cross-weight: 0.3
+cross-weight-learnable: True
 cross-self: False
 cross-src: True
-cross-to-asr: False
+cross-to-asr: True
 cross-to-st: True
-cross-operator: concat
-wait-k-asr: 3
+cross-operator: src_sum
+cross-src-from: before-self
+cross-shared: False
+wait-k-asr: 0
 
 # label smoothing
 lsm-weight: 0.1
@@ -43,8 +46,8 @@ opt: noam
 accum-grad: 2
 grad-clip: 5
 patience: 0
-epochs: 30  # longer version of "short" for SpecAugment: 30ep->50ep
-time-limit: 0.1
+epochs: 200  # longer version of "short" for SpecAugment: 30ep->50ep
+time-limit: 0.05
 dropout-rate: 0.1
 
 # transformer specific setting

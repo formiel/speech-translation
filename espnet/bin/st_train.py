@@ -223,6 +223,8 @@ def get_parser(parser=None, required=True):
     # CROSS ATTENTION
     parser.add_argument('--cross-weight', default=0.0, type=float,
                         help='Weight decay ratio')
+    parser.add_argument('--cross-weight-learnable', default=False, type=strtobool,
+                        help='Learn cross weights.')                
     parser.add_argument('--cross-self', default=False, type=strtobool,
                         help='Plug the cross attention to the self attention.')
     parser.add_argument('--cross-src', default=False, type=strtobool,

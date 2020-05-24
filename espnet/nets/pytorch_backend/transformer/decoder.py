@@ -52,7 +52,9 @@ class Decoder(ScorerInterface, torch.nn.Module):
                  normalize_before=True,
                  concat_after=False,
                  cross_operator=None,
-                 cross_shared=False):
+                 cross_shared=False,
+                 cross_weight_learnable=False,
+                 cross_weight=0.0):
         """Construct an Decoder object."""
         torch.nn.Module.__init__(self)
         if input_layer == "embed":
@@ -87,7 +89,7 @@ class Decoder(ScorerInterface, torch.nn.Module):
             if 'self_' in cross_operator:
                 if cross_shared and cross_src_attn is not None:
                     # cross_self_attn = cross_src_attn
-                    cross_self_attn = True # TODO: implement shared self and source
+                    cross_self_attn = True # TODO: backward compatibility for shared self and source
                 else:
                     # cross_self_attn = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
                     cross_self_attn = True
@@ -111,7 +113,9 @@ class Decoder(ScorerInterface, torch.nn.Module):
                 cross_self_attn=MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate) if cross_self_attn else None,
                 cross_src_attn=MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate) if cross_src_attn else None,
                 cross_operator=cross_operator,
-                cross_shared=cross_shared
+                cross_shared=cross_shared,
+                cross_weight_learnable=cross_weight_learnable,
+                cross_weight=cross_weight
             )
         )
 
@@ -122,7 +126,7 @@ class Decoder(ScorerInterface, torch.nn.Module):
         else:
             self.output_layer = None
 
-    def forward(self, tgt, tgt_mask, memory, memory_mask, cross=None, cross_mask=None, cross_self=False, cross_src=False, cross_operator='sum', cross_weight=0.3):
+    def forward(self, tgt, tgt_mask, memory, memory_mask, cross=None, cross_mask=None, cross_self=False, cross_src=False):
         """Forward decoder.
 
         :param torch.Tensor tgt: input token ids, int64 (batch, maxlen_out) if input_layer == "embed"
@@ -141,15 +145,17 @@ class Decoder(ScorerInterface, torch.nn.Module):
         :rtype: torch.Tensor
         """
         x = self.embed(tgt)
-        x, tgt_mask, memory, memory_mask, _, _, _, _, _, _ = self.decoders(x, tgt_mask, memory, memory_mask, cross, cross_mask, 
-                                                                        cross_self, cross_src, cross_operator, cross_weight)
+        x, tgt_mask, memory, memory_mask, _, _, _, _ = self.decoders(x, tgt_mask, 
+                                                                    memory, memory_mask, 
+                                                                    cross, cross_mask, 
+                                                                    cross_self, cross_src)
         if self.normalize_before:
             x = self.after_norm(x)
         if self.output_layer is not None:
             x = self.output_layer(x)
         return x, tgt_mask
 
-    def forward_one_step(self, tgt, tgt_mask, memory, cross=None, cross_mask=None, cross_self=False, cross_src=False, cross_operator='sum', cross_weight=0.3, cache=None):
+    def forward_one_step(self, tgt, tgt_mask, memory, cross=None, cross_mask=None, cross_self=False, cross_src=False, cache=None):
         """Forward one step.
 
         :param torch.Tensor tgt: input token ids, int64 (batch, maxlen_out)
@@ -167,9 +173,11 @@ class Decoder(ScorerInterface, torch.nn.Module):
             cache = self.init_state()
         new_cache = []
         for c, decoder in zip(cache, self.decoders):
-            # x, tgt_mask, memory, memory_mask = decoder(x, tgt_mask, memory, None, cache=c)
-            x, tgt_mask, memory, memory_mask, _, _, _, _, _, _ = decoder(x, tgt_mask, memory, None, cross, cross_mask, 
-                                                                        cross_self, cross_src, cross_operator, cross_weight, cache=c)
+            x, tgt_mask, memory, memory_mask, _, _, _, _ = decoder(x, tgt_mask, 
+                                                                        memory, None, 
+                                                                        cross, cross_mask, 
+                                                                        cross_self, cross_src, 
+                                                                        cache=c)
             new_cache.append(x)
 
         if self.normalize_before:

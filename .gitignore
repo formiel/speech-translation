@@ -11,3 +11,4 @@ egs/must_c/st_multilingual/_NOTES.md
 egs/must_c/st_multilingual/submit.slurm
 egs/must_c/st_multilingual/submit_cpu.slurm
 egs/must_c/st_multilingual/run-multi-cpu.sh
+egs/must_c/st_multilingual/_NOTES_examine.md

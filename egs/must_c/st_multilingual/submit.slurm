@@ -7,7 +7,7 @@
 #SBATCH --exclusive
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=96            # nombre de coeurs à réserver par tâche   
-#SBATCH --time=20:00:00              # temps d'exécution maximum demande (HH:MM:SS) 
+#SBATCH --time=5:00:00              # temps d'exécution maximum demande (HH:MM:SS) 
 #SBATCH --output=./slurm_logs/decode-%j.txt # nom du fichier de sortie
 
 # Load necessary modules

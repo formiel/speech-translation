@@ -51,7 +51,9 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
                  pos_enc_class=PositionalEncoding,
                  normalize_before=True,
                  concat_after=False,
-                 cross_operator=None):
+                 cross_operator=None,
+                 cross_weight_learnable=False,
+                 cross_weight=0.0):
         """Construct an Decoder object."""
         torch.nn.Module.__init__(self)
         if input_layer == "embed":
@@ -124,7 +126,9 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
                 dropout_rate,
                 normalize_before,
                 concat_after,
-                cross_operator=cross_operator
+                cross_operator=cross_operator,
+                cross_weight_learnable=cross_weight_learnable,
+                cross_weight=cross_weight
             )
         )
         if self.normalize_before:
@@ -137,10 +141,11 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
             self.output_layer = None
             self.output_layer_asr = None
 
-    def forward(self, tgt, tgt_mask, tgt_asr, tgt_mask_asr, memory, memory_mask, cross_mask, cross_mask_asr,
+    def forward(self, tgt, tgt_mask, tgt_asr, tgt_mask_asr, 
+                memory, memory_mask, 
+                cross_mask, cross_mask_asr,
                 cross_self=False, cross_src=False,
-                cross_self_from="before-self", cross_src_from="before-src", 
-                cross_operator='sum', cross_weight=0.3):
+                cross_self_from="before-self", cross_src_from="before-src"):
         """Forward decoder.
 
         :param torch.Tensor tgt: input token ids, int64 (batch, maxlen_out) if input_layer == "embed"
@@ -160,10 +165,9 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
         """
         x = self.embed(tgt)
         x_asr = self.embed_asr(tgt_asr)
-        x, tgt_mask, x_asr, tgt_mask_asr, memory, memory_mask, _, _, _, _, _, _ , _, _ = self.dual_decoders(x, tgt_mask, x_asr, tgt_mask_asr, 
-                                                                                                    memory, memory_mask, cross_mask, cross_mask_asr, 
-                                                                                                    cross_self, cross_src, cross_self_from, cross_src_from,
-                                                                                                    cross_operator, cross_weight)
+        x, tgt_mask, x_asr, tgt_mask_asr, memory, memory_mask, _, _, _, _, _, _  = self.dual_decoders(x, tgt_mask, x_asr, tgt_mask_asr, 
+                                                                                        memory, memory_mask, cross_mask, cross_mask_asr, 
+                                                                                        cross_self, cross_src, cross_self_from, cross_src_from)
         if self.normalize_before:
             x = self.after_norm(x)
             x_asr = self.after_norm_asr(x_asr)
@@ -172,12 +176,12 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
             x_asr = self.output_layer_asr(x_asr)
         return x, tgt_mask, x_asr, tgt_mask_asr
 
-    def forward_one_step(self, tgt, tgt_mask, tgt_asr, tgt_mask_asr, 
+    def forward_one_step(self, tgt, tgt_mask, 
+                        tgt_asr, tgt_mask_asr, 
                         memory, 
                         cross_mask=None, cross_mask_asr=None, 
                         cross_self=False, cross_src=False,
-                        cross_self_from="before-self", cross_src_from="before-src", 
-                        cross_operator='sum', cross_weight=0.3, 
+                        cross_self_from="before-self", cross_src_from="before-src",
                         cache=None, cache_asr=None):
         """Forward one step.
 
@@ -200,13 +204,11 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
         new_cache = []
         new_cache_asr = []
         for c, c_asr, dual_decoder in zip(cache, cache_asr, self.dual_decoders):
-            # x, tgt_mask, memory, memory_mask = decoder(x, tgt_mask, memory, None, cache=c)
-            x, tgt_mask, x_asr, tgt_mask_asr, memory, _, _, _, _, _, _, _, _, _ = dual_decoder(x, tgt_mask, x_asr, tgt_mask_asr,
-                                                                                                                memory, None, cross_mask, cross_mask_asr, 
-                                                                                                                cross_self, cross_src, 
-                                                                                                                cross_self_from, cross_src_from,
-                                                                                                                cross_operator, cross_weight, 
-                                                                                                                cache=c, cache_asr=c_asr)
+            x, tgt_mask, x_asr, tgt_mask_asr, memory, _, _, _, _, _, _, _ = dual_decoder(x, tgt_mask, x_asr, tgt_mask_asr,
+                                                                                    memory, None, cross_mask, cross_mask_asr, 
+                                                                                    cross_self, cross_src, 
+                                                                                    cross_self_from, cross_src_from,
+                                                                                    cache=c, cache_asr=c_asr)
             new_cache.append(x)
             new_cache_asr.append(x_asr)
 

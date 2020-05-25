@@ -31,7 +31,8 @@ class DualDecoderLayer(nn.Module):
     def __init__(self, size, size_asr, self_attn, src_attn, feed_forward, 
                  self_attn_asr, src_attn_asr, feed_forward_asr,
                  cross_self_attn, cross_self_attn_asr, cross_src_attn, cross_src_attn_asr,
-                 dropout_rate, normalize_before=True, concat_after=False, cross_operator=None):
+                 dropout_rate, normalize_before=True, concat_after=False, cross_operator=None,
+                 cross_weight_learnable=False, cross_weight=0.0):
         """Construct an DecoderLayer object."""
         super(DualDecoderLayer, self).__init__()
         self.size = size
@@ -49,14 +50,22 @@ class DualDecoderLayer(nn.Module):
         self.cross_src_attn = cross_src_attn
         self.cross_src_attn_asr = cross_src_attn_asr
 
-        if cross_self_attn is not None and cross_operator == "concat":
-            self.cross_concat_linear1 = nn.Linear(size + size, size)
-        if cross_self_attn_asr is not None and cross_operator == "concat":
-            self.cross_concat_linear1_asr = nn.Linear(size + size, size)
-        if cross_src_attn is not None and cross_operator == "concat":
-            self.cross_concat_linear2 = nn.Linear(size + size, size)
-        if cross_src_attn_asr is not None and cross_operator == "concat":
-            self.cross_concat_linear2_asr = nn.Linear(size + size, size)
+        self.cross_operator = cross_operator
+        if cross_operator == "concat":
+            if cross_self_attn is not None: 
+                self.cross_concat_linear1 = nn.Linear(size + size, size)
+            if cross_self_attn_asr is not None:
+                self.cross_concat_linear1_asr = nn.Linear(size + size, size)
+            if cross_src_attn is not None:
+                self.cross_concat_linear2 = nn.Linear(size + size, size)
+            if cross_src_attn_asr is not None:
+                self.cross_concat_linear2_asr = nn.Linear(size + size, size)
+        elif cross_operator == "sum":
+            if cross_weight_learnable:
+                assert float(cross_weight) > 0
+                self.cross_weight = torch.nn.Parameter(torch.tensor(cross_weight))
+            else:
+                self.cross_weight = cross_weight 
 
         self.norm1 = LayerNorm(size)
         self.norm2 = LayerNorm(size)
@@ -76,10 +85,11 @@ class DualDecoderLayer(nn.Module):
             self.concat_linear1_asr = nn.Linear(size + size, size)
             self.concat_linear2_asr = nn.Linear(size + size, size)
 
-    def forward(self, tgt, tgt_mask, tgt_asr, tgt_mask_asr, memory, memory_mask, cross_mask, cross_mask_asr,
+    def forward(self, tgt, tgt_mask, tgt_asr, tgt_mask_asr, 
+                memory, memory_mask, 
+                cross_mask, cross_mask_asr,
                 cross_self=False, cross_src=False,
                 cross_self_from="before-self", cross_src_from="before-src", 
-                cross_operator='sum', cross_weight=0.3, 
                 cache=None, cache_asr=None):
         """Compute decoded features.
 
@@ -123,20 +133,6 @@ class DualDecoderLayer(nn.Module):
             tgt_q_mask_asr = None
             if tgt_mask_asr is not None:
                 tgt_q_mask_asr = tgt_mask_asr[:, -1:, :]
-        
-        # logging.info(f'| AFTER NORM - BEFORE SELF-ATTENTION')
-        # logging.info(f'tgt.size() = {tgt.size()}')
-        # logging.info(f'tgt_asr.size() = {tgt_asr.size()}')
-        # logging.info(f'----------------------------------')
-        # logging.info(f'tgt_q.size() = {tgt_q.size()}')
-        # logging.info(f'tgt_q_mask.size() = {tgt_q_mask.size()}')
-        # logging.info(f'----------------------------------')
-        # logging.info(f'tgt_q_asr.size() = {tgt_q_asr.size()}')
-        # logging.info(f'tgt_q_mask_asr.size() = {tgt_q_mask_asr.size()}')
-        # logging.info(f'----------------------------------')
-        # logging.info(f'cross_mask.size() = {cross_mask.size()}')
-        # logging.info(f'cross_mask_asr.size() = {cross_mask_asr.size()}')
-        # logging.info(f'----------------------------------')
 
         # Self-attention
         if self.concat_after:
@@ -148,20 +144,14 @@ class DualDecoderLayer(nn.Module):
             x = self.dropout(self.self_attn(tgt_q, tgt, tgt, tgt_q_mask))
             x_asr = self.dropout_asr(self.self_attn_asr(tgt_q_asr, tgt_asr, tgt_asr, tgt_q_mask_asr))
         
-        # logging.info(f'| AFTER SELF-ATTENTION')
-        # logging.info(f'x.size() = {x.size()}')
-        # logging.info(f'x_asr.size() = {x_asr.size()}')
-        # logging.info(f'----------------------------------')
-        
-        # logging.info(f'| BEFORE CROSS-SELF ATTENTION')
         # Cross-self attention
         if cross_self and cross_self_from == "before-self":
             z = self.dropout(self.cross_self_attn(tgt_q, tgt_asr, tgt_asr, cross_mask))
             z_asr = self.dropout_asr(self.cross_self_attn_asr(tgt_q_asr, tgt, tgt, cross_mask_asr))
-            if cross_operator == 'sum':
-                x = x + cross_weight * z
-                x_asr = x_asr + cross_weight * z_asr
-            elif cross_operator == 'concat':
+            if self.cross_operator == 'sum':
+                x = x + self.cross_weight * z
+                x_asr = x_asr + self.cross_weight * z_asr
+            elif self.cross_operator == 'concat':
                 x = self.cross_concat_linear1(torch.cat((x, z), dim=-1))
                 x_asr = self.cross_concat_linear1_asr(torch.cat((x_asr, z_asr), dim=-1))
             else:
@@ -169,10 +159,6 @@ class DualDecoderLayer(nn.Module):
 
         x = x + residual
         x_asr = x_asr + residual_asr
-        # logging.info(f'| AFTER CROSS-SELF-ATTENTION')
-        # logging.info(f'x.size() = {x.size()}')
-        # logging.info(f'x_asr.size() = {x_asr.size()}')
-        # logging.info(f'----------------------------------')
 
         if not self.normalize_before:
             x = self.norm1(x)
@@ -187,11 +173,6 @@ class DualDecoderLayer(nn.Module):
         y = x
         y_asr = x_asr
 
-        # logging.info(f'| BEFORE SOURCE-ATTENTION')
-        # logging.info(f'x.size() = {x.size()}')
-        # logging.info(f'x_asr.size() = {x_asr.size()}')
-        # logging.info(f'----------------------------------')
-
         if self.concat_after:
             x_concat = torch.cat((x, self.src_attn(x, memory, memory, memory_mask)), dim=-1)
             x = self.concat_linear2(x_concat)
@@ -201,17 +182,14 @@ class DualDecoderLayer(nn.Module):
             x = self.dropout(self.src_attn(x, memory, memory, memory_mask))
             x_asr = self.dropout_asr(self.src_attn_asr(x_asr, memory, memory, memory_mask))
         
-        # logging.info(f'| CROSS-SOURCE ATTENTION')
         # Cross-source attention
         if cross_src and cross_src_from == "before-src":
-            # logging.info(f'cross_mask.size()={cross_mask.size()}')
-            # logging.info(f'cross_mask_asr.size()={cross_mask_asr.size()}')
             z = self.dropout(self.cross_src_attn(y, y_asr, y_asr, cross_mask))
             z_asr = self.dropout_asr(self.cross_src_attn_asr(y_asr, y, y, cross_mask_asr))
-            if cross_operator == 'sum':
-                x = x + cross_weight * z
-                x_asr = x_asr + cross_weight * z_asr
-            elif cross_operator == 'concat':
+            if self.cross_operator == 'sum':
+                x = x + self.cross_weight * z
+                x_asr = x_asr + self.cross_weight * z_asr
+            elif self.cross_operator == 'concat':
                 x = self.cross_concat_linear2(torch.cat((x, z), dim=-1))
                 x_asr = self.cross_concat_linear2_asr(torch.cat((x_asr, z_asr), dim=-1))
             else:
@@ -219,11 +197,6 @@ class DualDecoderLayer(nn.Module):
         
         x = x + residual
         x_asr = x_asr + residual_asr
-
-        # logging.info(f'| AFTER CROSS-SOURCE-ATTENTION')
-        # logging.info(f'x.size() = {x.size()}')
-        # logging.info(f'x_asr.size() = {x_asr.size()}')
-        # logging.info(f'----------------------------------')
         
         if not self.normalize_before:
             x = self.norm2(x)
@@ -241,16 +214,12 @@ class DualDecoderLayer(nn.Module):
         if not self.normalize_before:
             x = self.norm3(x)
             x_asr = self.norm3_asr(x_asr)
-
-        # logging.info(f'| AFTER FEED-FORWARD')
-        # logging.info(f'x.size() = {x.size()}')
-        # logging.info(f'x_asr.size() = {x_asr.size()}')
-        # logging.info(f'----------------------------------')
         
         if cache is not None:
             x = torch.cat([cache, x], dim=1)
         if cache_asr is not None:
             x_asr = torch.cat([cache_asr, x_asr], dim=1)
 
-        return x, tgt_mask, x_asr, tgt_mask_asr, memory, memory_mask, cross_mask, cross_mask_asr, cross_self, cross_src, \
-                cross_self_from, cross_src_from, cross_operator, cross_weight
+        return x, tgt_mask, x_asr, tgt_mask_asr, \
+                memory, memory_mask, cross_mask, cross_mask_asr, \
+                cross_self, cross_src, cross_self_from, cross_src_from

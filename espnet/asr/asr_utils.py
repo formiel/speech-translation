@@ -514,18 +514,7 @@ def torch_load(path, model):
     if hasattr(model, 'module'):
         model.module.load_state_dict(model_state_dict)
     else:
-        # try:
         model.load_state_dict(model_state_dict)
-        # except RuntimeError:
-        #     for name, params in model_state_dict.items(): 
-        #         if 'attn' not in name:
-        #             model.state_dict()[name] = params
-        #         elif 'self_attn' in name:
-        #             new_key = name.replace('self_attn', 'cross_self_attn')
-        #             model.state_dict()[new_key] = params
-        #         elif 'src_attn' in name:
-        #             new_key = name.replace('src_attn', 'cross_src_attn')
-        #             model.state_dict()[new_key] = params
 
     del model_state_dict
 

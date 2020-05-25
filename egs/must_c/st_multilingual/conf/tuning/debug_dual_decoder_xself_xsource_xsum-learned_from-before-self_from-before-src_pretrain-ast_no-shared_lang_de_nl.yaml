@@ -17,6 +17,7 @@ mt-weight: 0.0
 # Cross attention
 lang-tok: decoder-pre
 cross-weight: 0.3
+cross-weight-learnable: True
 cross-self: True
 cross-src: True
 cross-to-asr: True

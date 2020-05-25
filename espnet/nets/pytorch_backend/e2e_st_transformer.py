@@ -209,7 +209,7 @@ class E2E(STInterface, torch.nn.Module):
             cross_operator=self.cross_operator,
             cross_shared=self.cross_shared,
             cross_weight_learnable=self.cross_weight_learnable,
-            cross_weight=self.cross_weight,
+            cross_weight=self.cross_weight
         )
         self.pad = 0
         self.sos = odim - 1
@@ -242,7 +242,7 @@ class E2E(STInterface, torch.nn.Module):
                 cross_operator=self.cross_operator,
                 cross_shared=self.cross_shared,
                 cross_weight_learnable=self.cross_weight_learnable,
-                cross_weight=self.cross_weight,
+                cross_weight=self.cross_weight
             )
             if self.num_decoders == 1:
                 logging.info('*** Use 1 decoder *** ')

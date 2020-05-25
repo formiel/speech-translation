@@ -141,6 +141,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         self.wait_k_asr = getattr(args, "wait_k_asr", 0)
         self.cross_src_from = getattr(args, "cross_src_from", "embedding")
         self.cross_self_from = getattr(args, "cross_self_from", "embedding")
+        self.cross_weight_learnable = getattr(args, "cross_weight_learnable", False)
 
         # one-to-many ST experiments
         self.one_to_many = getattr(args, "one_to_many", False)
@@ -206,7 +207,9 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                 self_attention_dropout_rate=args.transformer_attn_dropout_rate,
                 src_attention_dropout_rate=args.transformer_attn_dropout_rate,
                 normalize_before=self.normalize_before,
-                cross_operator=self.cross_operator
+                cross_operator=self.cross_operator,
+                cross_weight_learnable=self.cross_weight_learnable,
+                cross_weight=self.cross_weight
         )
 
         self.pad = 0
@@ -378,9 +381,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                                                                                 hs_pad, hs_mask, cross_mask, cross_mask_asr,
                                                                                 cross_self=self.cross_self, cross_src=self.cross_src,
                                                                                 cross_self_from=self.cross_self_from,
-                                                                                cross_src_from=self.cross_src_from,
-                                                                                cross_operator=self.cross_operator,
-                                                                                cross_weight=self.cross_weight)
+                                                                                cross_src_from=self.cross_src_from)
 
         self.pred_pad = pred_pad
         self.pred_pad_asr = pred_pad_asr
@@ -604,9 +605,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                                                                                                           cross_mask=None, cross_mask_asr=None,
                                                                                                           cross_self=self.cross_self, cross_src=self.cross_src,
                                                                                                           cross_self_from=self.cross_self_from,
-                                                                                                          cross_src_from=self.cross_src_from,
-                                                                                                          cross_operator=self.cross_operator, 
-                                                                                                          cross_weight=self.cross_weight)
+                                                                                                          cross_src_from=self.cross_src_from)
                     if hyp['yseq'][-1] == self.eos and i > 2:
                         local_att_scores = None
                     if hyp['yseq_asr'][-1] == self.eos and i > 2:

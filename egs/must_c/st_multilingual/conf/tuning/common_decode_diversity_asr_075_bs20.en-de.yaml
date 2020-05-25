@@ -1,0 +1,17 @@
+batchsize: 0
+beam-size: 20
+penalty: 0.6
+maxlenratio: 0.3
+minlenratio: 0.0
+
+beam-size-asr: 20
+penalty-asr: 0.6
+maxlenratio-asr: 0.3
+minlenratio-asr: 0.0
+
+recog: False
+trans: False
+recog-and-trans: True
+
+beam-search-type: sum
+ratio-diverse-asr: 0.75

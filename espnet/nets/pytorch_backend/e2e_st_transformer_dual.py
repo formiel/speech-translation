@@ -601,8 +601,10 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                     local_att_scores = traced_decoder(ys, ys_mask, enc_output)[0]
                 else:
                     if hyp['yseq'][-1] != self.eos or hyp['yseq_asr'][-1] != self.eos or i < 2:
+                        cross_mask = create_cross_mask(ys, ys_asr, self.ignore_id, wait_k_cross=self.wait_k_asr)
+                        cross_mask_asr = create_cross_mask(ys_asr, ys, self.ignore_id, wait_k_cross=self.wait_k_asr)
                         local_att_scores, _, local_att_scores_asr, _ = self.dual_decoder.forward_one_step(ys, ys_mask, ys_asr, ys_mask_asr, enc_output,
-                                                                                                          cross_mask=None, cross_mask_asr=None,
+                                                                                                          cross_mask=cross_mask, cross_mask_asr=cross_mask_asr,
                                                                                                           cross_self=self.cross_self, cross_src=self.cross_src,
                                                                                                           cross_self_from=self.cross_self_from,
                                                                                                           cross_src_from=self.cross_src_from)

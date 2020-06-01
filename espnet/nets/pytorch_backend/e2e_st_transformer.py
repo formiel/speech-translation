@@ -1127,7 +1127,6 @@ class E2E(STInterface, torch.nn.Module):
             for idx, hyp in enumerate(hyps):
                 # get nbest local scores and their ids
                 if hyp['yseq'][-1] == self.eos and i > 2:
-                    # ys_mask = torch.ones_like(subsequent_mask(len(hyp['yseq'])).unsqueeze(0)) # temporarily deactivated
                     ys_mask = subsequent_mask(len(hyp['yseq'])).unsqueeze(0)
                     ys = torch.tensor(hyp['yseq']).unsqueeze(0)
                 else:
@@ -1135,7 +1134,6 @@ class E2E(STInterface, torch.nn.Module):
                     ys = torch.tensor(hyp['yseq']).unsqueeze(0)
 
                 if hyp['yseq_asr'][-1] == self.eos and i > 2:
-                    # ys_mask_asr = torch.ones_like(subsequent_mask(len(hyp['yseq_asr'])).unsqueeze(0)) # temporarily deactivated
                     ys_mask_asr = subsequent_mask(len(hyp['yseq_asr'])).unsqueeze(0)
                     ys_asr = torch.tensor(hyp['yseq_asr']).unsqueeze(0)
                 else:
@@ -1152,12 +1150,13 @@ class E2E(STInterface, torch.nn.Module):
                 else:
                     if hyp['yseq'][-1] != self.eos or i < 2:
                         if self.cross_to_st:
+                            cross_mask = create_cross_mask(ys, ys_asr, self.ignore_id, wait_k_cross=self.wait_k_asr)
                             y_cross = self.decoder_asr.embed(ys_asr)
                             if (self.cross_self_from == "before-self" and self.cross_self) or \
                                 (self.cross_src_from == "before-self" and self.cross_src):
                                 y_cross = self.decoder_asr.decoders[0].norm1(y_cross)
                             local_att_scores = self.decoder.forward_one_step(ys, ys_mask, enc_output, 
-                                                                        cross=y_cross, cross_mask=None,
+                                                                        cross=y_cross, cross_mask=cross_mask,
                                                                         cross_self=self.cross_self, cross_src=self.cross_src)[0]
                         else:
                             local_att_scores = self.decoder.forward_one_step(ys, ys_mask, enc_output)[0]
@@ -1169,11 +1168,12 @@ class E2E(STInterface, torch.nn.Module):
                     if hyp['yseq_asr'][-1] != self.eos or i < 2:
                         if self.cross_to_asr:
                             y_cross = self.decoder.embed(ys)
+                            cross_mask_asr = create_cross_mask(ys_asr, ys, self.ignore_id, wait_k_cross=self.wait_k_asr)
                             if (self.cross_self_from == "before-self" and self.cross_self) or \
                                 (self.cross_src_from == "before-self" and self.cross_src):
                                  y_cross = self.decoder.decoders[0].norm1(y_cross)
                             local_att_scores_asr = self.decoder_asr.forward_one_step(ys_asr, ys_mask_asr, enc_output,
-                                                                        cross=y_cross, cross_mask=None,
+                                                                        cross=y_cross, cross_mask=cross_mask_asr,
                                                                         cross_self=self.cross_self, cross_src=self.cross_src)[0]
                         else:
                             local_att_scores_asr = self.decoder_asr.forward_one_step(ys_asr, ys_mask_asr, enc_output)[0]

@@ -15,16 +15,19 @@ def main():
         val_scores = []
         for log in logs:
             if "validation/main/acc" in log.keys():
-                val_scores += [[log["epoch"], log["validation/main/acc"]]]
+                # val_scores += [[log["epoch"], log["validation/main/acc"]]]
+                val_scores += [[log["iteration"], log["validation/main/acc"]]]
             elif "val_perplexity" in log.keys():
-                val_scores += [[log["epoch"], 1 / log["val_perplexity"]]]
+                # val_scores += [[log["epoch"], 1 / log["val_perplexity"]]]
+                val_scores += [[log["iteration"], 1 / log["val_perplexity"]]]
         if len(val_scores) == 0:
             raise ValueError("`validation/main/acc` or `val_perplexity` is not found in log.")
         val_scores = np.array(val_scores)
         sort_idx = np.argsort(val_scores[:, -1])
         sorted_val_scores = val_scores[sort_idx][::-1]
         print("best val scores = " + str(sorted_val_scores[:args.num, 1]))
-        print("selected epochs = " + str(sorted_val_scores[:args.num, 0].astype(np.int64)))
+        # print("selected epochs = " + str(sorted_val_scores[:args.num, 0].astype(np.int64)))
+        print("selected iterations = " + str(sorted_val_scores[:args.num, 0].astype(np.int64)))
         last = [os.path.dirname(args.snapshots[0]) + "/snapshot.iter.%d" % (
             int(epoch)) for epoch in sorted_val_scores[:args.num, 0]]
     else:

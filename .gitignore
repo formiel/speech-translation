@@ -12,3 +12,10 @@ egs/must_c/st_multilingual/submit.slurm
 egs/must_c/st_multilingual/submit_cpu.slurm
 egs/must_c/st_multilingual/run-multi-cpu.sh
 egs/must_c/st_multilingual/_NOTES_examine.md
+egs/must_c/st_multilingual/create_data.py
+egs/must_c/st_multilingual/submit_sequential_jobs_any.sh
+egs/must_c/st_multilingual/run-multi-toto.sh
+egs/must_c/st_multilingual/submit-toto.slurm
+egs/must_c/st_multilingual/_NOTES_report.md
+egs/must_c/st_multilingual/_NOTES_backup.md
+egs/must_c/st_multilingual/create_report.py

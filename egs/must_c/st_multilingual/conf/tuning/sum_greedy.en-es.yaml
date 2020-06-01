@@ -1,0 +1,16 @@
+batchsize: 0
+beam-size: 1
+penalty: 0.3
+maxlenratio: 0.3
+minlenratio: 0.0
+
+beam-size-asr: 1
+penalty-asr: 0.3
+maxlenratio-asr: 0.3
+minlenratio-asr: 0.0
+
+recog: False
+trans: False
+recog-and-trans: True
+
+beam-search-type: sum

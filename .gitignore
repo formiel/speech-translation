@@ -21,3 +21,4 @@ egs/must_c/st_multilingual/_NOTES_backup.md
 egs/must_c/st_multilingual/create_report.py
 egs/must_c/st_multilingual/toto1.sh
 .vscode/.ropeproject/objectdb
+egs/must_c/st_multilingual/test.sh

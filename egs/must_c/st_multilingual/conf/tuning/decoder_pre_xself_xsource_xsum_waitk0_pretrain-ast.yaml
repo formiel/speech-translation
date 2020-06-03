@@ -45,7 +45,7 @@ opt: noam
 accum-grad: 2
 grad-clip: 5
 patience: 5
-epochs: 35  # longer version of "short" for SpecAugment: 30ep->50ep
+epochs: 13  # longer version of "short" for SpecAugment: 30ep->50ep
 time-limit: 100
 dropout-rate: 0.1
 

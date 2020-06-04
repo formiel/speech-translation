@@ -23,17 +23,20 @@ def get_parser():
     parser.add_argument('--num-spkrs', type=int, default=1, help='number of speakers')
     parser.add_argument('--refs', type=str, nargs='+', help='ref for all speakers')
     parser.add_argument('--hyps', type=str, nargs='+', help='hyp for all outputs')
+    parser.add_argument('--output-idx', type=int, default=0, help='index of output in dictionary')
     return parser
 
 
 def main(args):
     args = get_parser().parse_args(args)
-    convert(args.json, args.dict, args.refs, args.hyps, args.num_spkrs)
+    convert(args.json, args.dict, args.refs, args.hyps, args.num_spkrs, args.output_idx)
 
 
-def convert(jsonf, dic, refs, hyps, num_spkrs=1):
+def convert(jsonf, dic, refs, hyps, num_spkrs=1, output_idx=0):
     n_ref = len(refs)
     n_hyp = len(hyps)
+    output_idx = int(output_idx)
+    print(f'output_idx = {output_idx}')
     assert n_ref == n_hyp
     assert n_ref == num_spkrs
 
@@ -60,9 +63,9 @@ def convert(jsonf, dic, refs, hyps, num_spkrs=1):
         for x in j['utts']:
             # recognition hypothesis
             if num_spkrs == 1:
-                seq = [char_list[int(i)] for i in j['utts'][x]['output'][0]['rec_tokenid'].split()]
+                seq = [char_list[int(i)] for i in j['utts'][x]['output'][output_idx]['rec_tokenid'].split()]
             else:
-                seq = [char_list[int(i)] for i in j['utts'][x]['output'][ns][0]['rec_tokenid'].split()]
+                seq = [char_list[int(i)] for i in j['utts'][x]['output'][ns][output_idx]['rec_tokenid'].split()]
             # In the recognition hypothesis, the <eos> symbol is usually attached in the last part of the sentence
             # and it is removed below.
             hyp_file.write(" ".join(seq).replace('<eos>', '')),
@@ -70,9 +73,9 @@ def convert(jsonf, dic, refs, hyps, num_spkrs=1):
 
             # reference
             if num_spkrs == 1:
-                seq = j['utts'][x]['output'][0]['token']
+                seq = j['utts'][x]['output'][output_idx]['token']
             else:
-                seq = j['utts'][x]['output'][ns][0]['token']
+                seq = j['utts'][x]['output'][ns][output_idx]['token']
             # Unlike the recognition hypothesis, the reference is directly generated from a token without dictionary
             # to avoid to include <unk> symbols in the reference to make scoring normal.
             # The detailed discussion can be found at https://github.com/espnet/espnet/issues/993

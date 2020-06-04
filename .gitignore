@@ -22,3 +22,5 @@ egs/must_c/st_multilingual/create_report.py
 egs/must_c/st_multilingual/toto1.sh
 .vscode/.ropeproject/objectdb
 egs/must_c/st_multilingual/test.sh
+egs/must_c/st_multilingual/run-multi-toto2.sh
+egs/must_c/st_multilingual/submit-toto2.slurm

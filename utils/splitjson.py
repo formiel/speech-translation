@@ -45,8 +45,8 @@ if __name__ == '__main__':
     filename = os.path.basename(args.json).split('.')[0]
     dirname = os.path.dirname(args.json)
     dirname = '{}/split{}utt_{}'.format(dirname, args.parts, args.tgt_lang)
-    if not os.path.exists(dirname):
-        os.makedirs(dirname)
+    # if not os.path.exists(dirname):
+    os.makedirs(dirname, exist_ok=True)
 
     # load json and split keys
     j = json.load(codecs.open(args.json, 'r', encoding="utf-8"))

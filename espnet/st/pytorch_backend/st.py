@@ -347,6 +347,7 @@ def train(args):
         model = model_class(idim, odim, args)
         logging.info(f'*** Model *** \n {model}')
     assert isinstance(model, STInterface)
+    logging.info(f'| Number of model parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}')
 
     subsampling_factor = model.subsample[0]
     logging.info(f'subsampling_factor={subsampling_factor}')

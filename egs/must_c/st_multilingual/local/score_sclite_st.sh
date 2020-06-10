@@ -60,10 +60,10 @@ paste -d "(" <(cut -d '(' -f 1 ${dir}/ref.trn.lc.en | local/remove_punctuation.p
 detokenizer.perl -l en -q < ${dir}/ref.trn.lc.rm.en > ${dir}/ref.trn.lc.rm.detok.en
 detokenizer.perl -l en -q < ${dir}/hyp.trn.lc.rm.en > ${dir}/hyp.trn.lc.rm.detok.en
 
-sclite -r ${dir}/ref.trn.lc.rm.detok.en trn -h ${dir}/hyp.trn.lc.rm.detok.en trn -i rm -o all stdout > ${dir}/result.txt
+sclite -r ${dir}/ref.trn.lc.rm.detok.en trn -h ${dir}/hyp.trn.lc.rm.detok.en trn -i rm -o all stdout > ${dir}/result.cer.txt
 
-echo "write a CER (or TER) result in ${dir}/result.wer.txt"
-grep -e Avg -e SPKR -m 2 ${dir}/result.wer.txt
+echo "write a CER (or TER) result in ${dir}/result.cer.txt"
+grep -e Avg -e SPKR -m 2 ${dir}/result.cer.txt
 
 if ${wer}; then
     if [ -n "$bpe" ]; then

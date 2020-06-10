@@ -152,7 +152,6 @@ class E2E(STInterface, torch.nn.Module):
         self.normalize_before = getattr(args, "normalize_before", True)
         logging.info(f'self.normalize_before = {self.normalize_before}')
 
-        # Check parameters
         # Backward compatability
         if self.cross_operator in ["sum", "concat"]:
             if self.cross_self and self.cross_src:
@@ -164,6 +163,7 @@ class E2E(STInterface, torch.nn.Module):
         if self.cross_operator:
             assert self.cross_operator in ['self_sum', 'self_concat', 'src_sum', 'src_concat', 'self_src_sum', 'self_src_concat']
 
+        # Check parameters
         if self.cross_operator and 'sum' in self.cross_operator and self.cross_weight <= 0:
             assert (not self.cross_to_asr) and (not self.cross_to_st)
         if self.cross_to_asr or self.cross_to_st:
@@ -206,7 +206,7 @@ class E2E(STInterface, torch.nn.Module):
             self_attention_dropout_rate=args.transformer_attn_dropout_rate,
             src_attention_dropout_rate=args.transformer_attn_dropout_rate,
             normalize_before=self.normalize_before,
-            cross_operator=self.cross_operator,
+            cross_operator=self.cross_operator if self.cross_to_st else None,
             cross_shared=self.cross_shared,
             cross_weight_learnable=self.cross_weight_learnable,
             cross_weight=self.cross_weight
@@ -239,7 +239,7 @@ class E2E(STInterface, torch.nn.Module):
                 self_attention_dropout_rate=args.transformer_attn_dropout_rate,
                 src_attention_dropout_rate=args.transformer_attn_dropout_rate,
                 normalize_before=self.normalize_before,
-                cross_operator=self.cross_operator,
+                cross_operator=self.cross_operator if self.cross_to_asr else None,
                 cross_shared=self.cross_shared,
                 cross_weight_learnable=self.cross_weight_learnable,
                 cross_weight=self.cross_weight
@@ -285,7 +285,7 @@ class E2E(STInterface, torch.nn.Module):
 
         if self.lang_tok == "encoder-pre-sum":
             self.language_embeddings = build_embedding(self.langs_dict, self.idim, padding_idx=self.pad)
-            print(f'language_embeddings: {self.language_embeddings}')
+            logging.info(f'language_embeddings: {self.language_embeddings}')
 
         if self.cross_operator:
             if "sum" in self.cross_operator:
@@ -324,11 +324,11 @@ class E2E(STInterface, torch.nn.Module):
 
         if self.one_to_many:
             tgt_lang_ids = ys_pad[:, 0:1]
-            ys_pad = ys_pad[:, 1:]  # remove target language ID in the beggining
+            ys_pad = ys_pad[:, 1:]
             
             if self.do_asr:
                 tgt_lang_ids_src = ys_pad_src[:, 0:1]
-                ys_pad_src = ys_pad_src[:, 1:]  # remove target language ID in the beggining
+                ys_pad_src = ys_pad_src[:, 1:]
 
         # 1. forward encoder
         xs_pad = xs_pad[:, :max(ilens)]  # for data parallel # bs x max_ilens x idim
@@ -1204,7 +1204,6 @@ class E2E(STInterface, torch.nn.Module):
                     # Force diversity for ST only
                     if ratio_diverse_st > 0 and ratio_diverse_asr <= 0:
                         ct = int((1 - ratio_diverse_st) * beam)
-                        # logging.info(f'ct = {ct}')
                         s2v = s2v.reshape(beam, beam, 2)
                         Sc = S[:, :ct]
                         local_best_scores, id2k = Sc.flatten().topk(beam)
@@ -1217,7 +1216,6 @@ class E2E(STInterface, torch.nn.Module):
                     # Force diversity for ASR only
                     if ratio_diverse_asr > 0 and ratio_diverse_st <= 0:
                         cr = int((1 - ratio_diverse_asr) * beam)
-                        # logging.info(f'cr = {cr}')
                         s2v = s2v.reshape(beam, beam, 2)
                         Sc = S[:cr, :]
                         local_best_scores, id2k = Sc.view(-1).topk(beam)
@@ -1232,8 +1230,6 @@ class E2E(STInterface, torch.nn.Module):
                         cr = int((1 - ratio_diverse_asr) * beam) 
                         ct = int((1 - ratio_diverse_st) * beam)
                         ct = max(ct, math.ceil(beam // cr))
-                        # logging.info(f'cr = {cr}')
-                        # logging.info(f'ct = {ct}')
                                     
                         s2v = s2v.reshape(beam, beam, 2)
                         Sc = S[:cr, :ct]

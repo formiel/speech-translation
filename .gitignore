@@ -24,3 +24,4 @@ egs/must_c/st_multilingual/test.sh
 egs/must_c/st_multilingual/check.py
 egs/must_c/st_multilingual/conf/tuning/*
 *.vscode
+egs/must_c/st_multilingual/_NOTES_draft.md

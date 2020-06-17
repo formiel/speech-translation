@@ -169,7 +169,7 @@ The pre-trained weights is saved in the folder `pre_trained_weights`.
 The trained models are saved in the folder `exp`.
 
 ### 2.2. List of configurations needed to be trained
-The configurations needed to be trained for longer epochs are saved in `.conf/training` in this repo.
+The configurations needed to be trained for longer epochs are saved in `egs/must_c/st_multilingual/conf/training` in this repo.
 
 ### 2.3. Train or Resume training
 Please run the following command to train or resume training (the resume will be detected automatically if there are checkpoints in the `exp/${config}/results` folder), where `${config}` is the name tag of the experiment.

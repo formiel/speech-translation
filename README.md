@@ -9,9 +9,76 @@ This is our fork of ESPNet. Code for multilingual speech translation can be foun
 3. [Decode multilingual models](#3.-decode-multilingual-models) -->
 
 
-## 1. Installation of necessary packages
+## 1. Dependencies
+
+You will need PyTorch, Kaldi, and ESPNet. **In the sequel, it is assumed that
+you are already inside a virtual environment** with PyTorch installed (together with necessary standard
+Python packages), and that `$WORK` is your working directory. **Note that the instructions here are different from the ones
+on the official ESPNet repo (they install a miniconda virtual environment that
+will be activated each time you run an ESPNet script)**.
+
 ### Kaldi
+
+Clone the Kaldi repo:
+
+```bash
+cd $WORK
+git clone https://github.com/kaldi-asr/kaldi.git
+```
+
+The following commands may require other dependencies, please install them
+accordingly.
+
+Check and make its dependencies:
+
+```bash
+cd $WORK/kaldi/tools
+bash extras/check_dependencies.sh
+touch python/.use_default_python
+make -j$(nproc)
+```
+
+Build Kaldi, replace the MKL paths with your system's ones:
+
+```bash
+cd $WORK/kaldi/src
+./configure --shared \
+    --use-cuda=no \
+    --mkl-root=/some/path/linux/mkl \
+    --mkl-libdir=/some/path/linux/mkl/lib/intel64_lin
+make depend -j$(nproc)
+make -j$(nproc)
+```
+
+**Important:** After installing Kaldi, make sure there's no `kaldi/tools/env.sh`
+and no `kaldi/tools/python/python`, otherwise there will be an error
+("no module sentencepiece") when running ESPNet.
+
 ### ESPNet
+
+Clone this repo:
+
+```bash
+cd $WORK
+git clone https://github.com/formiel/speech-translation.git
+```
+
+Prepare the dependencies:
+
+```bash
+cd $WORK/speech-translation
+ln -s $WORK/kaldi tools/kaldi
+pip install .
+cd tools
+git clone https://github.com/moses-smt/mosesdecoder.git moses
+```
+
+If you prefer to install it in editable mode, then replace the `pip install` line
+with
+
+```bash
+pip install --user . && pip install --user -e .
+```
 
 
 ## 2. Instructions on training new models or resuming checkpoints

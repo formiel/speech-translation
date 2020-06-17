@@ -834,7 +834,7 @@ def trans(args):
                         logging.info('=== Beam search separately ===')
                         nbest_hyps, nbest_hyps_asr = model.recognize_and_translate(feat, args, train_args.char_list, rnnlm)
                         new_js[name] = add_results_to_json(js[name], nbest_hyps, train_args.char_list)
-                        new_js[name]['output'].append(add_results_to_json(js[name], nbest_hyps_asr, train_args.char_list, output_idx=1)['output'])
+                        new_js[name]['output'].append(add_results_to_json(js[name], nbest_hyps_asr, train_args.char_list, output_idx=1)['output'][0])
                     else:
                         raise NotImplementedError
                 elif args.recog and args.trans:
@@ -842,7 +842,7 @@ def trans(args):
                     nbest_hyps_asr = model.recognize(feat, args, train_args.char_list, rnnlm)
                     nbest_hyps = model.translate(feat, args, train_args.char_list, rnnlm)
                     new_js[name] = add_results_to_json(js[name], nbest_hyps, train_args.char_list)
-                    new_js[name]['output'].append(add_results_to_json(js[name], nbest_hyps_asr, train_args.char_list, output_idx=1)['output'])
+                    new_js[name]['output'].append(add_results_to_json(js[name], nbest_hyps_asr, train_args.char_list, output_idx=1)['output'][0])
                 elif args.recog:
                     logging.info('***** Recognize ONLY ******')
                     nbest_hyps_asr = model.recognize(feat, args, train_args.char_list, rnnlm)

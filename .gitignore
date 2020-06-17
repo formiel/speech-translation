@@ -25,3 +25,7 @@ egs/must_c/st_multilingual/check.py
 egs/must_c/st_multilingual/conf/tuning/*
 *.vscode
 egs/must_c/st_multilingual/_NOTES_draft.md
+egs/must_c/st_multilingual/print_params.py
+egs/must_c/st_multilingual/correct_json.py
+egs/must_c/st_multilingual/run-toto.slurm
+egs/must_c/st_multilingual/run-p1.slurm

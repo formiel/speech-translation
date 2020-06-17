@@ -28,15 +28,24 @@ class DualDecoderLayer(nn.Module):
 
     """
 
-    def __init__(self, size, size_asr, self_attn, src_attn, feed_forward, 
+    def __init__(self, size, size_asr, 
+                 self_attn, src_attn, feed_forward, 
                  self_attn_asr, src_attn_asr, feed_forward_asr,
-                 cross_self_attn, cross_self_attn_asr, cross_src_attn, cross_src_attn_asr,
-                 dropout_rate, normalize_before=True, concat_after=False, cross_operator=None,
-                 cross_weight_learnable=False, cross_weight=0.0):
+                 cross_self_attn, cross_self_attn_asr, 
+                 cross_src_attn, cross_src_attn_asr,
+                 dropout_rate, 
+                 normalize_before=True, 
+                 concat_after=False, 
+                 cross_operator=None,
+                 cross_weight_learnable=False, 
+                 cross_weight=0.0,
+                 cross_to_asr=True,
+                 cross_to_st=True):
         """Construct an DecoderLayer object."""
         super(DualDecoderLayer, self).__init__()
         self.size = size
         self.size_asr = size_asr
+
         self.self_attn = self_attn
         self.src_attn = src_attn
         self.feed_forward = feed_forward
@@ -50,6 +59,9 @@ class DualDecoderLayer(nn.Module):
         self.cross_src_attn = cross_src_attn
         self.cross_src_attn_asr = cross_src_attn_asr
 
+        self.cross_to_asr = cross_to_asr
+        self.cross_to_st = cross_to_st
+
         self.cross_operator = cross_operator
         if cross_operator == "concat":
             if cross_self_attn is not None: 
@@ -62,10 +74,16 @@ class DualDecoderLayer(nn.Module):
                 self.cross_concat_linear2_asr = nn.Linear(size + size, size)
         elif cross_operator == "sum":
             if cross_weight_learnable:
-                assert float(cross_weight) > 0
-                self.cross_weight = torch.nn.Parameter(torch.tensor(cross_weight))
+                assert float(cross_weight) > 0.0
+                if self.cross_to_st:
+                    self.cross_weight = torch.nn.Parameter(torch.tensor(cross_weight))
+                if self.cross_to_asr:
+                    self.cross_weight_asr = torch.nn.Parameter(torch.tensor(cross_weight))
             else:
-                self.cross_weight = cross_weight 
+                if self.cross_to_st:
+                    self.cross_weight = cross_weight
+                if self.cross_to_asr:
+                    self.cross_weight_asr = cross_weight 
 
         self.norm1 = LayerNorm(size)
         self.norm2 = LayerNorm(size)
@@ -146,16 +164,22 @@ class DualDecoderLayer(nn.Module):
         
         # Cross-self attention
         if cross_self and cross_self_from == "before-self":
-            z = self.dropout(self.cross_self_attn(tgt_q, tgt_asr, tgt_asr, cross_mask))
-            z_asr = self.dropout_asr(self.cross_self_attn_asr(tgt_q_asr, tgt, tgt, cross_mask_asr))
-            if self.cross_operator == 'sum':
-                x = x + self.cross_weight * z
-                x_asr = x_asr + self.cross_weight * z_asr
-            elif self.cross_operator == 'concat':
-                x = self.cross_concat_linear1(torch.cat((x, z), dim=-1))
-                x_asr = self.cross_concat_linear1_asr(torch.cat((x_asr, z_asr), dim=-1))
-            else:
-                raise NotImplementedError
+            if self.cross_to_st:
+                z = self.dropout(self.cross_self_attn(tgt_q, tgt_asr, tgt_asr, cross_mask))
+                if self.cross_operator == 'sum':
+                    x = x + self.cross_weight * z
+                elif self.cross_operator == 'concat':
+                    x = self.cross_concat_linear1(torch.cat((x, z), dim=-1))
+                else:
+                    raise NotImplementedError
+            if self.cross_to_asr:
+                z_asr = self.dropout_asr(self.cross_self_attn_asr(tgt_q_asr, tgt, tgt, cross_mask_asr))
+                if self.cross_operator == 'sum':
+                    x_asr = x_asr + self.cross_weight_asr * z_asr
+                elif self.cross_operator == 'concat':
+                    x_asr = self.cross_concat_linear1_asr(torch.cat((x_asr, z_asr), dim=-1))
+                else:
+                    raise NotImplementedError
 
         x = x + residual
         x_asr = x_asr + residual_asr
@@ -184,16 +208,22 @@ class DualDecoderLayer(nn.Module):
         
         # Cross-source attention
         if cross_src and cross_src_from == "before-src":
-            z = self.dropout(self.cross_src_attn(y, y_asr, y_asr, cross_mask))
-            z_asr = self.dropout_asr(self.cross_src_attn_asr(y_asr, y, y, cross_mask_asr))
-            if self.cross_operator == 'sum':
-                x = x + self.cross_weight * z
-                x_asr = x_asr + self.cross_weight * z_asr
-            elif self.cross_operator == 'concat':
-                x = self.cross_concat_linear2(torch.cat((x, z), dim=-1))
-                x_asr = self.cross_concat_linear2_asr(torch.cat((x_asr, z_asr), dim=-1))
-            else:
-                raise NotImplementedError
+            if self.cross_to_st:
+                z = self.dropout(self.cross_src_attn(y, y_asr, y_asr, cross_mask))
+                if self.cross_operator == 'sum':
+                    x = x + self.cross_weight * z
+                elif self.cross_operator == 'concat':
+                    x = self.cross_concat_linear2(torch.cat((x, z), dim=-1))
+                else:
+                    raise NotImplementedError
+            if self.cross_to_asr:
+                z_asr = self.dropout_asr(self.cross_src_attn_asr(y_asr, y, y, cross_mask_asr))
+                if self.cross_operator == 'sum':
+                    x_asr = x_asr + self.cross_weight_asr * z_asr
+                elif self.cross_operator == 'concat':
+                    x_asr = self.cross_concat_linear2_asr(torch.cat((x_asr, z_asr), dim=-1))
+                else:
+                    raise NotImplementedError
         
         x = x + residual
         x_asr = x_asr + residual_asr

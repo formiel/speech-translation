@@ -514,7 +514,7 @@ def torch_load(path, model):
     if hasattr(model, 'module'):
         model.module.load_state_dict(model_state_dict)
     else:
-        model.load_state_dict(model_state_dict)
+        model.load_state_dict(model_state_dict, strict=False)
 
     del model_state_dict
 

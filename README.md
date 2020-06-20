@@ -179,7 +179,7 @@ The trained models are saved in the folder `exp`.
 The configurations needed to be trained for longer epochs are saved in `egs/must_c/st_multilingual/conf/training` in this repo.
 
 ### 2.3. Train or Resume training
-Please run the following command to train or resume training. **The training will be automatically resumed from the last checkpoints in the `exp/${config}/results` folder if this folder exists, where `${config}` is the name tag of the experiment. If `exp/${config}/results` folder does not exist, the model will be trained from scratch (the weights is initialized using the pre-trained weights provided)**. 
+Please run the following command to train or resume training. **The training will be automatically resumed from the last checkpoints in the `exp/${config}/results` folder if this folder exists (and there are checkpoints of the format `snapshot.iter.${NUM_ITER}` in it), where `${config}` is the name tag of the experiment and `${NUM_ITER}` is the iteration number. If `exp/${config}/results` folder does not exist, the model will be trained from scratch (the weights is initialized using the pre-trained weights provided)**. 
 
 ```bash
 bash run.sh --stage 4 --stop-stage 4 --ngpu 8 \

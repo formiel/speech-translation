@@ -29,4 +29,5 @@ egs/must_c/st_multilingual/print_params.py
 egs/must_c/st_multilingual/correct_json.py
 egs/must_c/st_multilingual/run-toto.slurm
 egs/must_c/st_multilingual/run-p1.slurm
-egs/must_c/st_multilingual/upload*
+egs/must_c/st_multilingual/*upload*
+egs/must_c/st_multilingual/wt_download.sh

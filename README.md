@@ -105,13 +105,20 @@ speech-translation
             |   └───...
             |   
             └───exp
-            |   └───config1
-            |       └───results
-            |            train.log    
-            |   └───config2
-            |       └───results
-            |            train.log
-            |   └───...
+            |    └───config1
+            |    |   |   train.log
+            |    |   └───results
+            |    |       └───snapshot.iter.5000
+            |    |       └───snapshot.iter.10000
+            |    |       └───...
+            |    |           
+            |    └───config2
+            |    |   |   train.log
+            |    |   └───results
+            |    |       └───snapshot.iter.5000
+            |    |       └───snapshot.iter.10000
+            |    |       └───...
+            |    └───... 
             |
             └───tensorboard
                 └───config1
@@ -172,7 +179,7 @@ The trained models are saved in the folder `exp`.
 The configurations needed to be trained for longer epochs are saved in `egs/must_c/st_multilingual/conf/training` in this repo.
 
 ### 2.3. Train or Resume training
-Please run the following command to train or resume training (the resume will be detected automatically if there are checkpoints in the `exp/${config}/results` folder), where `${config}` is the name tag of the experiment.
+Please run the following command to train or resume training. **The training will be automatically resumed from the last checkpoints in the `exp/${config}/results` folder if this folder exists, where `${config}` is the name tag of the experiment. If `exp/${config}/results` folder does not exist, the model will be trained from scratch (the weights is initialized using the pre-trained weights provided)**. 
 
 ```bash
 bash run.sh --stage 4 --stop-stage 4 --ngpu 8 \

@@ -236,7 +236,9 @@ def get_parser(parser=None, required=True):
     parser.add_argument('--cross-operator', default=None, type=str, choices=['sum', 'concat', 'self_sum', 'self_concat', 'src_sum', 'src_concat', 'self_src_sum', 'self_src_concat'],
                         help='Operator in the cross attention module: whether to sum or concatenate self and cross attention.')
     parser.add_argument('--wait-k-asr', default=0, type=int,
-                        help='st decoder waits asr for k steps.')
+                        help='ASR decoder is k steps ahead of ST decoder.')
+    parser.add_argument('--wait-k-st', default=0, type=int,
+                        help='ST decoder is k steps ahead of ASR decoder.')
     parser.add_argument('--cross-src-from', default='embedding', type=str, choices=['embedding', 'before-self', 'before-src'],
                         help='Where to take key and value of the cross decoder.')
     parser.add_argument('--cross-self-from', default='embedding', type=str, choices=['embedding', 'before-self'],

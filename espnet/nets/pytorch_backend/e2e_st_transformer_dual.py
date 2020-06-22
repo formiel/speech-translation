@@ -138,6 +138,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         self.cross_to_st = getattr(args, "cross_to_st", False)
         self.num_decoders = getattr(args, "num_decoders", 1)
         self.wait_k_asr = getattr(args, "wait_k_asr", 0)
+        self.wait_k_st = getattr(args, "wait_k_st", 0)
         self.cross_src_from = getattr(args, "cross_src_from", "embedding")
         self.cross_self_from = getattr(args, "cross_self_from", "embedding")
         self.cross_weight_learnable = getattr(args, "cross_weight_learnable", False)
@@ -176,6 +177,8 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                 logging.info(f'| Cross source from: {self.cross_src_from}')
             if self.cross_self:
                 logging.info(f'| Cross self from: {self.cross_self_from}')
+        logging.info(f'| wait_k_asr = {self.wait_k_asr}')
+        logging.info(f'| wait_k_st = {self.wait_k_st}')
         
         if (self.cross_src_from != "embedding" and self.cross_src) and (not self.normalize_before):
             logging.warning(f'WARNING: Resort to using self.cross_src_from == embedding for cross at source attention.')
@@ -330,7 +333,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
             # logging.info(f'ys_mask_src.size() = {ys_mask_src.size()}')
 
         cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, self.ignore_id, wait_k_cross=self.wait_k_asr)
-        cross_mask_asr = create_cross_mask(ys_in_pad_src, ys_in_pad, self.ignore_id, wait_k_cross=0)
+        cross_mask_asr = create_cross_mask(ys_in_pad_src, ys_in_pad, self.ignore_id, wait_k_cross=self.wait_k_st)
         pred_pad, pred_mask, pred_pad_asr, pred_mask_asr = self.dual_decoder(ys_in_pad, ys_mask, ys_in_pad_src, ys_mask_src,
                                                                                 hs_pad, hs_mask, cross_mask, cross_mask_asr,
                                                                                 cross_self=self.cross_self, cross_src=self.cross_src,
@@ -539,7 +542,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                 else:
                     if hyp['yseq'][-1] != self.eos or hyp['yseq_asr'][-1] != self.eos or i < 2:
                         cross_mask = create_cross_mask(ys, ys_asr, self.ignore_id, wait_k_cross=self.wait_k_asr)
-                        cross_mask_asr = create_cross_mask(ys_asr, ys, self.ignore_id, wait_k_cross=0)
+                        cross_mask_asr = create_cross_mask(ys_asr, ys, self.ignore_id, wait_k_cross=self.wait_k_st)
                         local_att_scores, _, local_att_scores_asr, _ = self.dual_decoder.forward_one_step(ys, ys_mask, ys_asr, ys_mask_asr, enc_output,
                                                                                                           cross_mask=cross_mask, cross_mask_asr=cross_mask_asr,
                                                                                                           cross_self=self.cross_self, cross_src=self.cross_src,

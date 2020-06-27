@@ -831,8 +831,8 @@ def trans(args):
                                                                         debug=args.debug)
                         new_js[name] = add_results_to_json_st_asr(js[name], nbest_hyps, train_args.char_list)
                     elif args.beam_search_type == 'separate':
-                        logging.info('=== Beam search separately ===')
-                        nbest_hyps, nbest_hyps_asr = model.recognize_and_translate(feat, args, train_args.char_list, rnnlm)
+                        logging.info('=== Beam search using beam_cross hypothesis ===')
+                        nbest_hyps, nbest_hyps_asr = model.recognize_and_translate_separate(feat, args, train_args.char_list, rnnlm)
                         new_js[name] = add_results_to_json(js[name], nbest_hyps, train_args.char_list)
                         new_js[name]['output'].append(add_results_to_json(js[name], nbest_hyps_asr, train_args.char_list, output_idx=1)['output'][0])
                     else:

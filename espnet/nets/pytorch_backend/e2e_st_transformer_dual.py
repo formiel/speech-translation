@@ -518,19 +518,22 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
             hyps_best_kept = []
 
             for idx, hyp in enumerate(hyps):
-                # get nbest local scores and their ids
-                # if hyp['yseq'][-1] == self.eos and i > 2:
-                #     ys_mask = torch.ones_like(subsequent_mask(len(hyp['yseq'])).unsqueeze(0))
-                #     ys = torch.tensor(hyp['yseq']).unsqueeze(0)
-                # else:
-                ys_mask = subsequent_mask(i + 1).unsqueeze(0)
+                if self.wait_k_asr > 0:
+                    if i < self.wait_k_asr:
+                        ys_mask = subsequent_mask(1).unsqueeze(0)
+                    else:
+                        ys_mask = subsequent_mask(i - self.wait_k_asr + 1).unsqueeze(0)
+                else:
+                    ys_mask = subsequent_mask(i + 1).unsqueeze(0)
                 ys = torch.tensor(hyp['yseq']).unsqueeze(0)
 
-                # if hyp['yseq_asr'][-1] == self.eos and i > 2:
-                #     ys_mask_asr = torch.ones_like(subsequent_mask(len(hyp['yseq_asr'])).unsqueeze(0))
-                #     ys_asr = torch.tensor(hyp['yseq_asr']).unsqueeze(0)
-                # else:
-                ys_mask_asr = subsequent_mask(i + 1).unsqueeze(0)
+                if self.wait_k_st > 0:
+                    if i < self.wait_k_st:
+                        ys_mask_asr = subsequent_mask(1).unsqueeze(0)
+                    else:
+                        ys_mask_asr = subsequent_mask(i - self.wait_k_st + 1).unsqueeze(0)
+                else:
+                    ys_mask_asr = subsequent_mask(i + 1).unsqueeze(0)
                 ys_asr = torch.tensor(hyp['yseq_asr']).unsqueeze(0)
 
                 # FIXME: jit does not match non-jit result
@@ -548,9 +551,9 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                                                                                                           cross_self=self.cross_self, cross_src=self.cross_src,
                                                                                                           cross_self_from=self.cross_self_from,
                                                                                                           cross_src_from=self.cross_src_from)
-                    if hyp['yseq'][-1] == self.eos and i > 2:
+                    if (hyp['yseq'][-1] == self.eos and i > 2) or i < self.wait_k_asr:
                         local_att_scores = None
-                    if hyp['yseq_asr'][-1] == self.eos and i > 2:
+                    if (hyp['yseq_asr'][-1] == self.eos and i > 2) or i < self.wait_k_st:
                         local_att_scores_asr = None
 
                 if local_att_scores is not None and local_att_scores_asr is not None:
@@ -632,18 +635,20 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                     new_hyp['yseq_asr'][:len(hyp['yseq_asr'])] = hyp['yseq_asr']
 
                     if local_att_scores is not None:
-                        # new_hyp['yseq'] = [0] * (1 + len(hyp['yseq']))
-                        # new_hyp['yseq'][:len(hyp['yseq'])] = hyp['yseq']
                         new_hyp['yseq'][len(hyp['yseq'])] = int(local_best_ids_st[j])
                     else:
-                       new_hyp['yseq'][len(hyp['yseq'])] = self.eos
+                        if i >= self.wait_k_asr:
+                            new_hyp['yseq'][len(hyp['yseq'])] = self.eos
+                        else:
+                            new_hyp['yseq'] = hyp['yseq'] # v3
                     
                     if local_att_scores_asr is not None:
-                        # new_hyp['yseq_asr'] = [0] * (1 + len(hyp['yseq_asr']))
-                        # new_hyp['yseq_asr'][:len(hyp['yseq_asr'])] = hyp['yseq_asr']
                         new_hyp['yseq_asr'][len(hyp['yseq_asr'])] = int(local_best_ids_asr[j])
                     else:
-                        new_hyp['yseq_asr'][len(hyp['yseq_asr'])] = self.eos
+                        if i >= self.wait_k_st:
+                            new_hyp['yseq_asr'][len(hyp['yseq_asr'])] = self.eos
+                        else:
+                            new_hyp['yseq_asr'] = hyp['yseq_asr'] # v3
 
                     hyps_best_kept.append(new_hyp)
 

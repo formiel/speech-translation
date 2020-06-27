@@ -138,6 +138,7 @@ class E2E(STInterface, torch.nn.Module):
         self.cross_to_st = getattr(args, "cross_to_st", False)
         self.num_decoders = getattr(args, "num_decoders", 1)
         self.wait_k_asr = getattr(args, "wait_k_asr", 0)
+        self.wait_k_st = getattr(args, "wait_k_st", 0)
         self.cross_src_from = getattr(args, "cross_src_from", "embedding")
         self.cross_self_from = getattr(args, "cross_self_from", "embedding")
         self.cross_shared = getattr(args, "cross_shared", False)
@@ -358,7 +359,7 @@ class E2E(STInterface, torch.nn.Module):
         ys_mask = target_mask(ys_in_pad, self.ignore_id) # bs x max_lens x max_lens
 
         if self.do_asr:
-            ys_mask_src = target_mask(ys_in_pad_src, self.ignore_id) # bs x max_lens x max_lens_src
+            ys_mask_src = target_mask(ys_in_pad_src, self.ignore_id) # bs x max_lens_src x max_lens_src
 
         if self.cross_to_st:
             cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, self.ignore_id, wait_k_cross=self.wait_k_asr)
@@ -382,7 +383,7 @@ class E2E(STInterface, torch.nn.Module):
         if self.do_asr:
             # forward ASR decoder
             if self.cross_to_asr:
-                cross_mask = create_cross_mask(ys_in_pad_src, ys_in_pad, self.ignore_id, wait_k_cross=0)
+                cross_mask = create_cross_mask(ys_in_pad_src, ys_in_pad, self.ignore_id, wait_k_cross=self.wait_k_st)
                 cross_input = self.decoder.embed(ys_in_pad)
                 if (self.cross_src_from == "before-self" and self.cross_src) or \
                     (self.cross_self_from == "before-self" and self.cross_self):
@@ -830,7 +831,7 @@ class E2E(STInterface, torch.nn.Module):
         return nbest_hyps
 
     def update_hypothesis(self, i, beam, hyps, hyps_cross_candidates,
-                          enc_output, decoder, decoder_cross=None):
+                          enc_output, decoder, decoder_cross=None, wait_k_cross=0):
         hyps_best_kept = []
         # For each ST hypothesis, we use the best ASR candidates as cross information
         for hyp in hyps:
@@ -842,12 +843,17 @@ class E2E(STInterface, torch.nn.Module):
             if decoder_cross is not None:
                 all_scores = []
                 for hyp_cross in hyps_cross_candidates:
-                    y_cross = decoder_cross.embed(torch.tensor(hyp_cross['yseq']).unsqueeze(0))
+                    if len(hyp_cross) > 2:
+                        if hyp_cross[-1] == self.eos and hyp_cross[-2] == self.eos:
+                            hyp_cross.append(self.eos)
+                    ys_cross = torch.tensor(hyp_cross['yseq']).unsqueeze(0)
+                    y_cross = decoder_cross.embed(ys_cross)
                     if (self.cross_self_from == "before-self" and self.cross_self) or \
                         (self.cross_src_from == "before-self" and self.cross_src):
                         y_cross = decoder_cross.decoders[0].norm1(y_cross)
+                    cross_mask = create_cross_mask(ys, ys_cross, self.ignore_id, wait_k_cross=wait_k_cross)
                     local_att_scores = decoder.forward_one_step(ys, ys_mask, enc_output, 
-                                                                cross=y_cross, cross_mask=None,
+                                                                cross=y_cross, cross_mask=cross_mask,
                                                                 cross_self=self.cross_self, cross_src=self.cross_src)[0]
                     V = local_att_scores.shape[-1]
                     all_scores.append(local_att_scores)
@@ -898,22 +904,21 @@ class E2E(STInterface, torch.nn.Module):
             else:
                 remained_hyps.append(hyp)
 
-        # end detection
-        
+        # end detection      
         if end_detect(ended_hyps, i) and trans_args.maxlenratio == 0.0:
             logging.info('end detected at %d', i)
             stop_decoding = True
 
         hyps = remained_hyps
         if len(hyps) > 0:
-            logging.debug('remeined hypothes: ' + str(len(hyps)))
+            logging.debug('remained hypothes: ' + str(len(hyps)))
         else:
             logging.info('no hypothesis. Finish decoding.')
             stop_decoding = True
         
         return hyps, ended_hyps, stop_decoding
 
-    def recognize_and_translate(self, x, trans_args, char_list=None, rnnlm=None, use_jit=False):
+    def recognize_and_translate_separate(self, x, trans_args, char_list=None, rnnlm=None, use_jit=False):
         """Translate input speech.
 
         :param ndnarray x: input acoustic feature (B, T, D) or (T, D)
@@ -994,7 +999,7 @@ class E2E(STInterface, torch.nn.Module):
             if i < maxlen and not stop_decoding_asr:
                 decoder_cross = self.decoder if self.cross_to_asr else None
                 hyps_asr = self.update_hypothesis(i, beam, hyps_asr, hyps_st_candidates,
-                            enc_output, decoder=self.decoder_asr, decoder_cross=decoder_cross)
+                            enc_output, decoder=self.decoder_asr, decoder_cross=decoder_cross, wait_k_cross=self.wait_k_st)
                 hyps_asr, ended_hyps_asr, stop_decoding_asr = self.process_hypothesis(i, hyps_asr,
                                     ended_hyps_asr, maxlen_asr, minlen_asr, trans_args, rnnlm=rnnlm)
                 hyps_asr_candidates = sorted(hyps_asr + ended_hyps_asr,
@@ -1006,7 +1011,7 @@ class E2E(STInterface, torch.nn.Module):
             if i >= self.wait_k_asr and not stop_decoding_st:
                 decoder_cross = self.decoder_asr if self.cross_to_st else None
                 hyps = self.update_hypothesis(i - self.wait_k_asr, beam, hyps, hyps_asr_candidates,
-                          enc_output, decoder=self.decoder, decoder_cross=decoder_cross)
+                          enc_output, decoder=self.decoder, decoder_cross=decoder_cross, wait_k_cross=self.wait_k_asr)
                 hyps, ended_hyps, stop_decoding_st = self.process_hypothesis(i - self.wait_k_asr, hyps, ended_hyps,
                                                 maxlen, minlen, trans_args, rnnlm=rnnlm)
                 hyps_st_candidates = sorted(hyps + ended_hyps,
@@ -1059,8 +1064,14 @@ class E2E(STInterface, torch.nn.Module):
         :rtype: list
         """
         assert self.do_asr, "Recognize and translate are performed simultaneously."
+
+        self.wait_k_asr = max(self.wait_k_asr, getattr(trans_args, "wait_k_asr", 0))
+        self.wait_k_st = max(self.wait_k_st, getattr(trans_args, "wait_k_st", 0)) 
+
         logging.info(f'| ratio_diverse_st = {ratio_diverse_st}')
         logging.info(f'| ratio_diverse_asr = {ratio_diverse_asr}')
+        logging.info(f'| wait_k_asr = {self.wait_k_asr}')
+        logging.info(f'| wait_k_st = {self.wait_k_st}')
 
         # prepare sos
         if getattr(trans_args, "tgt_lang", False):
@@ -1124,19 +1135,23 @@ class E2E(STInterface, torch.nn.Module):
             hyps_best_kept = []
 
             for idx, hyp in enumerate(hyps):
-                # get nbest local scores and their ids
-                # if hyp['yseq'][-1] == self.eos and i > 2:
-                #     ys_mask = subsequent_mask(len(hyp['yseq'])).unsqueeze(0)
-                #     ys = torch.tensor(hyp['yseq']).unsqueeze(0)
-                # else:
-                ys_mask = subsequent_mask(i + 1).unsqueeze(0)
+                
+                if self.wait_k_asr > 0:
+                    if i < self.wait_k_asr:
+                        ys_mask = subsequent_mask(1).unsqueeze(0)
+                    else:
+                        ys_mask = subsequent_mask(i - self.wait_k_asr + 1).unsqueeze(0)
+                else:
+                    ys_mask = subsequent_mask(i + 1).unsqueeze(0)
                 ys = torch.tensor(hyp['yseq']).unsqueeze(0)
 
-                # if hyp['yseq_asr'][-1] == self.eos and i > 2:
-                #     ys_mask_asr = subsequent_mask(len(hyp['yseq_asr'])).unsqueeze(0)
-                #     ys_asr = torch.tensor(hyp['yseq_asr']).unsqueeze(0)
-                # else:
-                ys_mask_asr = subsequent_mask(i + 1).unsqueeze(0)
+                if self.wait_k_st > 0:
+                    if i < self.wait_k_st:
+                        ys_mask_asr = subsequent_mask(1).unsqueeze(0)
+                    else:
+                        ys_mask_asr = subsequent_mask(i - self.wait_k_st + 1).unsqueeze(0)
+                else:
+                    ys_mask_asr = subsequent_mask(i + 1).unsqueeze(0)
                 ys_asr = torch.tensor(hyp['yseq_asr']).unsqueeze(0)
 
                 start = time.time()
@@ -1147,7 +1162,24 @@ class E2E(STInterface, torch.nn.Module):
                                                          (ys, ys_mask, enc_output))
                     local_att_scores = traced_decoder(ys, ys_mask, enc_output)[0]
                 else:
-                    if hyp['yseq'][-1] != self.eos or i < 2:
+                    if (hyp['yseq_asr'][-1] != self.eos or i < 2) and i >= self.wait_k_st:
+                        if self.cross_to_asr:
+                            y_cross = self.decoder.embed(ys)
+                            cross_mask_asr = create_cross_mask(ys_asr, ys, self.ignore_id, wait_k_cross=self.wait_k_st)
+                            if (self.cross_self_from == "before-self" and self.cross_self) or \
+                                (self.cross_src_from == "before-self" and self.cross_src):
+                                 y_cross = self.decoder.decoders[0].norm1(y_cross)
+                            local_att_scores_asr = self.decoder_asr.forward_one_step(ys_asr, ys_mask_asr, enc_output,
+                                                                        cross=y_cross, cross_mask=cross_mask_asr,
+                                                                        cross_self=self.cross_self, cross_src=self.cross_src)[0]
+                        else:
+                            local_att_scores_asr = self.decoder_asr.forward_one_step(ys_asr, ys_mask_asr, enc_output)[0]
+                        if score_is_prob:
+                            local_att_scores_asr = torch.exp(local_att_scores_asr)
+                    else:
+                        local_att_scores_asr = None
+
+                    if (hyp['yseq'][-1] != self.eos or i < 2) and i >= self.wait_k_asr:
                         if self.cross_to_st:
                             cross_mask = create_cross_mask(ys, ys_asr, self.ignore_id, wait_k_cross=self.wait_k_asr)
                             y_cross = self.decoder_asr.embed(ys_asr)
@@ -1163,24 +1195,7 @@ class E2E(STInterface, torch.nn.Module):
                             local_att_scores = torch.exp(local_att_scores)
                     else:
                         local_att_scores = None
-                    
-                    if hyp['yseq_asr'][-1] != self.eos or i < 2:
-                        if self.cross_to_asr:
-                            y_cross = self.decoder.embed(ys)
-                            cross_mask_asr = create_cross_mask(ys_asr, ys, self.ignore_id, wait_k_cross=self.wait_k_asr)
-                            if (self.cross_self_from == "before-self" and self.cross_self) or \
-                                (self.cross_src_from == "before-self" and self.cross_src):
-                                 y_cross = self.decoder.decoders[0].norm1(y_cross)
-                            local_att_scores_asr = self.decoder_asr.forward_one_step(ys_asr, ys_mask_asr, enc_output,
-                                                                        cross=y_cross, cross_mask=cross_mask_asr,
-                                                                        cross_self=self.cross_self, cross_src=self.cross_src)[0]
-                        else:
-                            local_att_scores_asr = self.decoder_asr.forward_one_step(ys_asr, ys_mask_asr, enc_output)[0]
-                        if score_is_prob:
-                            local_att_scores_asr = torch.exp(local_att_scores_asr)
-                    else:
-                        local_att_scores_asr = None
-
+                
                 if debug:
                     logging.info(f'forward time = {time.time() - start}')
 
@@ -1249,95 +1264,6 @@ class E2E(STInterface, torch.nn.Module):
                     local_best_scores = local_best_scores.squeeze(0) 
                 else:
                     raise NotImplementedError
-
-                # if ratio_diverse_st <= 0 and ratio_diverse_asr <=0:
-                #     if idx == 0:
-                #         logging.info(f'*** Do not force diversity ***')
-                #     if local_att_scores is not None and local_att_scores_asr is not None:                            
-                #         local_att_scores_asr = decode_asr_weight * local_att_scores_asr
-                #         # # Construct score matrix V x V (columns: ST, rows: ASR)
-                #         # score_matrix = (torch.mm(torch.t(local_att_scores), torch.ones_like(local_att_scores))
-                #         #                 + torch.mm(torch.t(torch.ones_like(local_att_scores_asr)), local_att_scores_asr))
-                #         # H, W = score_matrix.shape
-                #         # local_best_scores, indices = score_matrix.view(-1).topk(beam)
-                #         # local_best_ids = torch.cat(((indices // W).unsqueeze(1), (indices % W).unsqueeze(1)), dim=1)
-                #         # local_best_ids_st = local_best_ids[:,0]
-                #         # local_best_ids_asr = local_best_ids[:,1]
-
-                #         x_k, ix_k = local_att_scores.topk(beam)
-                #         y_k, iy_k = local_att_scores_asr.topk(beam)
-                #         s_k = (torch.mm(torch.t(x_k), torch.ones_like(x_k))
-                #                         + torch.mm(torch.t(torch.ones_like(y_k)), y_k))
-                #         local_best_scores , iv_k = s_k.view(-1).topk(beam)
-                #         A = torch.LongTensor([[i, j] for i in ix_k.squeeze(0) for j in iy_k.squeeze(0)])
-                #         ivk = A[iv_k]
-                #         local_best_ids_st = A[:,0]
-                #         local_best_ids_asr = A[:,1]   
-                #     elif local_att_scores is not None:
-                #         local_best_scores, local_best_ids_st = torch.topk(local_att_scores, beam, dim=1)
-                #         local_best_scores = local_best_scores.squeeze(0)
-                #         local_best_ids_st = local_best_ids_st.squeeze(0)
-                #     elif local_att_scores_asr is not None:
-                #         local_best_scores, local_best_ids_asr = torch.topk(local_att_scores_asr, beam, dim=1)
-                #         local_best_ids_asr = local_best_ids_asr.squeeze(0)
-                #         local_best_scores = local_best_scores.squeeze(0)                        
-                # else:
-                #     if ratio_diverse_st > 0 and ratio_diverse_asr > 0:
-                #         if idx == 0:
-                #             logging.info(f'*** Force diversity for both ST and ASR:  ***')
-                #         if local_att_scores is not None and local_att_scores_asr is not None:
-                #             count_st = [0] * self.odim
-                #             count_asr = [0] * self.odim
-                #             max_count = (1 - ratio_diverse_asr) * beam
-                #             # Construct score matrix V x V (columns: ST, rows: ASR)
-                #             score_matrix = (torch.mm(torch.t(local_att_scores), torch.ones_like(local_att_scores))
-                #                             + torch.mm(torch.t(torch.ones_like(local_att_scores_asr)), local_att_scores_asr))
-                #             H, W = score_matrix.shape
-                #             scores_vector, indices = torch.sort(score_matrix.view(-1), descending=True)
-                #             scores_vector = scores_vector.unsqueeze(1)
-                #             local_best_ids = torch.cat(((indices // W).unsqueeze(1), (indices % W).unsqueeze(1)), dim=1)
-                #             local_best_scores = []
-                #             local_best_ids_st = []
-                #             local_best_ids_asr = []
-                #             for (ii, jj), s in zip(local_best_ids, scores_vector):
-                #                 if count_st[ii] <= max_count and count_asr[jj] <= max_count:
-                #                     local_best_scores.append(float(s))
-                #                     local_best_ids_st.append(ii)
-                #                     local_best_ids_asr.append(jj)
-                #                     count_st[ii] += 1
-                #                     count_asr[jj] += 1
-                #                 if len(local_best_scores) >= beam:
-                #                     break
-                #         elif local_att_scores is not None:
-                #             local_best_scores, local_best_ids_st = torch.topk(local_att_scores, beam, dim=1)
-                #             local_best_scores = local_best_scores.squeeze(0)
-                #             local_best_ids_st = local_best_ids_st.squeeze(0)
-                #         elif local_att_scores_asr is not None:
-                #             local_best_scores, local_best_ids_asr = torch.topk(local_att_scores_asr, beam, dim=1)
-                #             local_best_scores = local_best_scores.squeeze(0)
-                #             local_best_ids_asr = local_best_ids_asr.squeeze(0)
-                #     elif ratio_diverse_asr > 0:
-                #         max_count = int((1 - ratio_diverse_asr) * beam)
-                #         if idx == 0:
-                #             logging.info(f'*** Force diversity for ASR only. max_count = {max_count}, beam = {beam} ***')
-                #         if local_att_scores is not None and local_att_scores_asr is not None:      
-                #             # Construct score matrix V x V (rows: ST, columns: ASR)
-                #             score_matrix = (torch.mm(torch.t(local_att_scores), torch.ones_like(local_att_scores))
-                #                             + torch.mm(torch.t(torch.ones_like(local_att_scores_asr)), local_att_scores_asr))
-                #             S, I = torch.topk(score_matrix, dim=0, k=max_count, sorted=False)
-                #             local_best_scores, indices = torch.topk(S.view(-1), k=beam, sorted=False)
-                #             local_best_ids_st = I.view(-1)[indices]
-                #             local_best_ids_asr = indices % self.odim
-                #         elif local_att_scores is not None:
-                #             local_best_scores, local_best_ids_st = torch.topk(local_att_scores, beam, dim=1, sorted=False)
-                #             local_best_scores = local_best_scores.squeeze(0)
-                #             local_best_ids_st = local_best_ids_st.squeeze(0)
-                #         elif local_att_scores_asr is not None:
-                #             local_best_scores, local_best_ids_asr = torch.topk(local_att_scores_asr, beam, dim=1, sorted=False)
-                #             local_best_scores = local_best_scores.squeeze(0)
-                #             local_best_ids_asr = local_best_ids_asr.squeeze(0)
-                #     else:
-                #         raise NotImplementedError
                 
                 if debug:
                     logging.info(f'score time = {time.time() - start}')
@@ -1354,18 +1280,22 @@ class E2E(STInterface, torch.nn.Module):
                     new_hyp['yseq_asr'][:len(hyp['yseq_asr'])] = hyp['yseq_asr']
 
                     if local_att_scores is not None:
-                        # new_hyp['yseq'] = [0] * (1 + len(hyp['yseq']))
-                        # new_hyp['yseq'][:len(hyp['yseq'])] = hyp['yseq']
                         new_hyp['yseq'][len(hyp['yseq'])] = int(local_best_ids_st[j])
                     else:
-                        new_hyp['yseq'][len(hyp['yseq'])] = self.eos
+                        if i >= self.wait_k_asr:
+                            new_hyp['yseq'][len(hyp['yseq'])] = self.eos
+                        else:
+                            new_hyp['yseq'] = hyp['yseq'] # v3
+                            # new_hyp['yseq'][len(hyp['yseq'])] = char_list.index(tgt_lang_id) if self.one_to_many and self.lang_tok == 'decoder-pre' else self.sos # v2
                     
                     if local_att_scores_asr is not None:
-                        # new_hyp['yseq_asr'] = [0] * (1 + len(hyp['yseq_asr']))
-                        # new_hyp['yseq_asr'][:len(hyp['yseq_asr'])] = hyp['yseq_asr']
                         new_hyp['yseq_asr'][len(hyp['yseq_asr'])] = int(local_best_ids_asr[j])
                     else:
-                        new_hyp['yseq_asr'][len(hyp['yseq_asr'])] = self.eos
+                        if i >= self.wait_k_st:
+                            new_hyp['yseq_asr'][len(hyp['yseq_asr'])] = self.eos
+                        else:
+                            new_hyp['yseq_asr'] = hyp['yseq_asr'] # v3
+                            # new_hyp['yseq_asr'][len(hyp['yseq_asr'])] = char_list.index(src_lang_id) if self.one_to_many and self.lang_tok == 'decoder-pre' else self.sos # v2
 
                     hyps_best_kept.append(new_hyp)
 

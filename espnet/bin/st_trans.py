@@ -102,6 +102,10 @@ def get_parser():
                         help='Input length ratio to obtain min output length')
     parser.add_argument('--ratio-diverse-asr', type=float, default=0.0,
                         help='Input length ratio to obtain min output length')
+    parser.add_argument('--wait-k-asr', type=int, default=0,
+                        help='ASR waits ST for k steps.')
+    parser.add_argument('--wait-k-st', type=int, default=0,
+                        help='ST waits ASR for k steps.')
     # rnnlm related
     parser.add_argument('--rnnlm', type=str, default=None,
                         help='RNNLM model file to read')

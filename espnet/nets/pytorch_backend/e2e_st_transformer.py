@@ -172,6 +172,13 @@ class E2E(STInterface, torch.nn.Module):
         assert bool(self.cross_operator) == (self.do_asr and (self.cross_to_asr or self.cross_to_st))
         if self.cross_src_from != "embedding" or self.cross_self_from != "embedding":
             assert self.normalize_before
+        if self.wait_k_asr > 0:
+            assert self.wait_k_st == 0
+        elif self.wait_k_st > 0:
+            assert self.wait_k_asr == 0
+        else:
+            assert self.wait_k_asr == 0
+            assert self.wait_k_st == 0
 
         logging.info("*** Cross attention parameters ***")
         if self.cross_to_asr:
@@ -362,7 +369,12 @@ class E2E(STInterface, torch.nn.Module):
             ys_mask_src = target_mask(ys_in_pad_src, self.ignore_id) # bs x max_lens_src x max_lens_src
 
         if self.cross_to_st:
-            cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, self.ignore_id, wait_k_cross=self.wait_k_asr)
+            if self.wait_k_asr > 0:
+                cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, self.ignore_id, wait_k_cross=self.wait_k_asr)
+            elif self.wait_k_st > 0:
+                cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, self.ignore_id, wait_k_cross=-self.wait_k_st)
+            else:
+                cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, self.ignore_id, wait_k_cross=0)
             cross_input = self.decoder_asr.embed(ys_in_pad_src)
             if (self.cross_src_from == "before-self" and self.cross_src) or \
                     (self.cross_self_from == "before-self" and self.cross_self): 
@@ -383,7 +395,12 @@ class E2E(STInterface, torch.nn.Module):
         if self.do_asr:
             # forward ASR decoder
             if self.cross_to_asr:
-                cross_mask = create_cross_mask(ys_in_pad_src, ys_in_pad, self.ignore_id, wait_k_cross=self.wait_k_st)
+                if self.wait_k_asr > 0:
+                    cross_mask = create_cross_mask(ys_in_pad_src, ys_in_pad, self.ignore_id, wait_k_cross=-self.wait_k_asr)
+                elif self.wait_k_st > 0:
+                    cross_mask = create_cross_mask(ys_in_pad_src, ys_in_pad, self.ignore_id, wait_k_cross=self.wait_k_st)
+                else:
+                    cross_mask = create_cross_mask(ys_in_pad_src, ys_in_pad, self.ignore_id, wait_k_cross=0)
                 cross_input = self.decoder.embed(ys_in_pad)
                 if (self.cross_src_from == "before-self" and self.cross_src) or \
                     (self.cross_self_from == "before-self" and self.cross_self):

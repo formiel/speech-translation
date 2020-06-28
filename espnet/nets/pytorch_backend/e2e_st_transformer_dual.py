@@ -160,6 +160,13 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         assert bool(self.cross_operator) == (self.do_asr and (self.cross_to_asr or self.cross_to_st))
         if self.cross_src_from != "embedding" or self.cross_self_from != "embedding":
             assert self.normalize_before
+        if self.wait_k_asr > 0:
+            assert self.wait_k_st == 0
+        elif self.wait_k_st > 0:
+            assert self.wait_k_asr == 0
+        else:
+            assert self.wait_k_asr == 0
+            assert self.wait_k_st == 0
 
         logging.info("*** Cross attention parameters ***")
         if self.cross_to_asr:
@@ -324,16 +331,20 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                 ys_in_pad_src = torch.cat([tgt_lang_ids_src, ys_in_pad_src[:, 1:]], dim=1)
 
         ys_mask = target_mask(ys_in_pad, self.ignore_id) # bs x max_lens x max_lens
-        # logging.info(f'ys_in_pad.size() = {ys_in_pad.size()}')
-        # logging.info(f'ys_in_pad_src.size() = {ys_in_pad_src.size()}')
-        # logging.info(f'ys_mask.size() = {ys_mask.size()}')
 
         if self.do_asr:
             ys_mask_src = target_mask(ys_in_pad_src, self.ignore_id) # bs x max_lens x max_lens_src
-            # logging.info(f'ys_mask_src.size() = {ys_mask_src.size()}')
 
-        cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, self.ignore_id, wait_k_cross=self.wait_k_asr)
-        cross_mask_asr = create_cross_mask(ys_in_pad_src, ys_in_pad, self.ignore_id, wait_k_cross=self.wait_k_st)
+        if self.wait_k_asr > 0:
+            cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, self.ignore_id, wait_k_cross=self.wait_k_asr)
+            cross_mask_asr = create_cross_mask(ys_in_pad_src, ys_in_pad, self.ignore_id, wait_k_cross=-self.wait_k_asr)
+        elif self.wait_k_st > 0:
+            cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, self.ignore_id, wait_k_cross=-self.wait_k_st)
+            cross_mask_asr = create_cross_mask(ys_in_pad_src, ys_in_pad, self.ignore_id, wait_k_cross=self.wait_k_st)
+        else:
+            cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, self.ignore_id, wait_k_cross=0)
+            cross_mask_asr = create_cross_mask(ys_in_pad_src, ys_in_pad, self.ignore_id, wait_k_cross=0)
+
         pred_pad, pred_mask, pred_pad_asr, pred_mask_asr = self.dual_decoder(ys_in_pad, ys_mask, ys_in_pad_src, ys_mask_src,
                                                                                 hs_pad, hs_mask, cross_mask, cross_mask_asr,
                                                                                 cross_self=self.cross_self, cross_src=self.cross_src,

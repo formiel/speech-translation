@@ -31,3 +31,6 @@ egs/must_c/st_multilingual/run-toto.slurm
 egs/must_c/st_multilingual/run-p1.slurm
 egs/must_c/st_multilingual/*upload*
 egs/must_c/st_multilingual/wt_download.sh
+egs/must_c/st_multilingual/report.py
+egs/must_c/st_multilingual/_TEX.md
+egs/must_c/st_multilingual/submit_cpu_toto.slurm

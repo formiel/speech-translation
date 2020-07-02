@@ -90,7 +90,7 @@ def get_parser():
     parser.add_argument('--trans', default=False, type=strtobool)
     parser.add_argument('--debug', default=False, type=strtobool)
     parser.add_argument('--recog-and-trans', default=False, type=strtobool)
-    parser.add_argument('--beam-search-type', type=str, choices=['sum', 'separate'], default='separate',
+    parser.add_argument('--beam-search-type', type=str, choices=['sum', 'separate', 'sum-mono'], default='separate',
                         help='Beam search type when doing recognition and translation simultaneously.')
     parser.add_argument('--beam-cross-size', type=int, default=1,
                         help='Beam cross size')

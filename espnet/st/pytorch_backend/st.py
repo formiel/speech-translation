@@ -830,6 +830,15 @@ def trans(args):
                                                                         ratio_diverse_asr=args.ratio_diverse_asr,
                                                                         debug=args.debug)
                         new_js[name] = add_results_to_json_st_asr(js[name], nbest_hyps, train_args.char_list)
+                    elif args.beam_search_type == 'sum-mono':
+                        logging.info('=== Beam search by sum of scores ===')
+                        nbest_hyps = model.recognize_and_translate_sum(feat, args, train_args.char_list, rnnlm, 
+                                                                        decode_asr_weight=args.decode_asr_weight,
+                                                                        score_is_prob=args.score_is_prob,
+                                                                        ratio_diverse_st=args.ratio_diverse_st,
+                                                                        ratio_diverse_asr=args.ratio_diverse_asr,
+                                                                        debug=args.debug)
+                        new_js[name] = add_results_to_json(js[name], nbest_hyps, train_args.char_list)
                     elif args.beam_search_type == 'separate':
                         logging.info('=== Beam search using beam_cross hypothesis ===')
                         nbest_hyps, nbest_hyps_asr = model.recognize_and_translate_separate(feat, args, train_args.char_list, rnnlm)

@@ -183,6 +183,7 @@ Please run the following command to train or resume training. **The training wil
 
 ```bash
 bash run.sh --stage 4 --stop-stage 4 --ngpu 8 \
+               --nbpe 32000 \
                --datadir ${DATA_DIR} \
                --preprocess-config ./conf/specaug.yaml \
                --tag ${tag} \

@@ -24,65 +24,94 @@ seed=1          # seed to generate random number
 mode=debug
 do_delta=false  # feature configuration
 
-preprocess_config=
-decode_config=
-
-# decoding parameter
-trans_model= # set a model to be used for decoding: 'model.acc.best' or 'model.loss.best'
-trans_set=
-max_iter_eval= # get best model up to a specified iteration
-# model average related (only for transformer)
-n_average=5                  # the number of ST models to be averaged
-use_valbest_average=true     # if true, the validation `n_average`-best ST models will be averaged.
-                             # if false, the last `n_average` ST models will be averaged.
-
-# pre-training related
-asr_model=
-st_model=
-
-# preprocessing related
-src_case=lc.rm
-tgt_case=tc
-# tc: truecase
-# lc: lowercase
-# lc.rm: lowercase with punctuation removal
-
 # Set this to somewhere where you want to put your data, or where
 # someone else has already put it.
 must_c=
 
 # target language related
-# tgt_lang="de_es_fr_nl_it_pt_ro_ru"
-tgt_lang=
+tgt_langs=
 # you can choose from de, es, fr, it, nl, pt, ro, ru
 # if you want to train the multilingual model, segment languages with _ as follows:
 # e.g., tgt_lang="de_es_fr"
-# if you want to use all languages, set tgt_lang="all"
+
+# pre-training related
+asr_model=
+st_model=
+
+# training related
+preprocess_config=
+
+# preprocessing related
+src_case=lc.rm              # lc.rm: lowercase with punctuation removal
+tgt_case=tc                 # tc: truecase
+use_joint_src_tgt_dict=     # if true, use one dictionary for both source and target languages
 
 # bpemode (unigram or bpe)
-nbpe=8000
+nbpe=
 bpemode=bpe
+
+# decoding related
+decode_config=
+trans_model=    # set a model to be used for decoding: 'model.acc.best' or 'model.loss.best'
+trans_set=
+max_iter_eval=  # get best model up to a specified iteration
+# model average related (only for transformer)
+n_average=5                  # the number of ST models to be averaged
+use_valbest_average=true     # if true, the validation `n_average`-best ST models will be averaged.
+                             # if false, the last `n_average` ST models will be averaged.
 
 # exp tag
 tag="" # tag for managing experiments.
 
 . utils/parse_options.sh || exit 1;
 
-datadir=${datadir}/${tgt_lang}
-train_config=./conf/training/${tag}.yaml
+# Modify params after parsing from command line
+# Multilingual related parameters
+tgt_langs=$(echo "$tgt_langs" | tr '_' '\n' | sort | tr '\n' '_')
+tgt_langs=$(echo ${tgt_langs::-1})
+lang_pairs=""
+lang_count=0
+for lang in $(echo ${tgt_langs} | tr '_' ' '); do
+    lang_pairs+="en-${lang},"
+    lang_count=$((lang_count + 1))
+done
+lang_pairs=$(echo ${lang_pairs::-1})
 
-echo "| experiment name: ${tag}"
-echo "| target language(s): ${tgt_lang}"
-echo "| data directory: ${datadir}"
-echo "| experiment directory: ${expdir}"
-echo "| nbpe = ${nbpe}"
-echo "| ngpu = ${ngpu}"
-echo "| max_iter_eval = ${max_iter_eval}"
-echo "| train_config: ${train_config}"
-echo "| decode_config: ${decode_config}"
-echo "| preprocess_config: ${preprocess_config}"
-echo "| pre-trained weights for encoder: ${asr_model}"
+if (( $lang_count == 8 )); then
+    suffix="lgs_all8"
+else
+    suffix="lgs_${tgt_langs}"
+fi
+
+# Paths to data and training configuration
+datadir=${datadir}/${tgt_langs}
+train_config=./conf/training/${tag}.yaml
+if [ ${use_joint_src_tgt_dict} ]; then
+    dprefix="dict1"
+else
+    dprefix="dict2"
+fi
+
+echo "*** General parameters ***"
+echo "| ngpu: ${ngpu}"
+echo "| experiment name: ${tag}"
+echo "| data directory: ${datadir}"
+echo "| target language(s): ${tgt_langs}"
+echo "| number of target languages: ${lang_count}"
+echo "| language pairs: ${lang_pairs}"
+
+echo "*** Training-related parameters ***"
+echo "| nbpe: ${nbpe}"
+echo "| dictionary prefix: ${dprefix}"
+echo "| dictionary suffix: ${suffix}"
+echo "| train_config: ${train_config}"
+echo "| preprocess_config: ${preprocess_config}"
+echo "| pre-trained weights for encoder: ${asr_model}"
 echo "| pre-trained weights for decoder: ${st_model}"
+
+echo "*** Decoding-related parameters ***"
+echo "| max_iter_eval: ${max_iter_eval}"
+echo "| decode_config: ${decode_config}"
 echo "| trans_model: ${trans_model}"
 
 # Set bash to 'debug' mode, it will exit on :
@@ -92,13 +121,13 @@ set -u
 set -o pipefail
 
 # Train, dev, and translation sets
-train_set=train_sp.en-${tgt_lang}.${tgt_lang}
-train_dev=dev.en-${tgt_lang}.${tgt_lang}
+train_set=train_sp.en-${tgt_langs}.${tgt_langs}
+train_dev=dev.en-${tgt_langs}.${tgt_langs}
 
 if [[ -z ${trans_set} ]]; then
     trans_set=""
     num_trans_set=0
-    for lang in $(echo ${tgt_lang} | tr '_' ' '); do
+    for lang in $(echo ${tgt_langs} | tr '_' ' '); do
         trans_set+="tst-COMMON.en-${lang}.${lang} "
         num_trans_set=$(( num_trans_set + 1 ))
     done
@@ -109,7 +138,7 @@ else
     done
 fi
 echo "| trans sets: ${trans_set}"
-echo "| number of translation sets: ${num_trans_set}"
+echo "| number of trans sets: ${num_trans_set}"
 
 # Experiment name and data directory
 if [ -z ${tag} ]; then
@@ -124,50 +153,33 @@ if [ -z ${tag} ]; then
         expname=${expname}_asrtrans
     fi
     if [ -n "${st_model}" ]; then
-        expname=${expname}_mttrans
+        expname=${expname}_sttrans
     fi
 else
-    expname=${tag} # get the name as the tag only
+    expname=${tag} # use tag for experiment name
 fi
 
 # Experiment and tensorboard directories
 expdir=${expdir}/${expname}
 tensorboard_dir=${tensorboard_dir}/${expname}
 mkdir -p ${expdir}
-echo "| expdir= ${expdir}"
-echo "| tensorboard_dir= ${tensorboard_dir}"
-
-# Multilingual related parameters
-lang_pairs=""
-lang_count=0
-for lang in $(echo ${tgt_lang} | tr '_' ' '); do
-    lang_pairs+="en-${lang},"
-    lang_count=$((lang_count + 1))
-done
-lang_pairs=$(echo ${lang_pairs::-1})
-echo "| number of target languages: ${lang_count}"
-echo "| language pairs: ${lang_pairs}"
-
-if (( $lang_count == 8 )); then
-    suffix="_v2"
-elif (( $lang_count == 2 )); then
-    suffix="_v2.1"
-else
-    suffix=""
-fi
+echo "| expdir: ${expdir}"
+echo "| tensorboard_dir: ${tensorboard_dir}"
 
 # Data input folders
 train_json_dir=${datadir}/train_sp
 val_json_dir=${datadir}/dev
-dict=${datadir}/lang_1spm/train_sp.en-${tgt_lang}.${tgt_lang}_bpe8000_units_tc${suffix}.txt
+dname=${train_set}_${bpemode}${nbpe}units_${tgt_case}_${suffix}
+dict=${datadir}/lang_1spm/${dname}.txt
 
+echo "*** Paths to training data and dictionary ***"
 echo "| train_json_dir: ${train_json_dir}"
 echo "| val_json_dir: ${val_json_dir}"
 echo "| dictionary: ${dict}"
 
 if [[ ${stage} -le -1 ]] && [[ ${stop_stage} -ge -1 ]]; then
     echo "***** stage -1: Data Download *****"
-    for lang in $(echo ${tgt_lang} | tr '_' ' '); do
+    for lang in $(echo ${tgt_langs} | tr '_' ' '); do
         local/download_and_untar.sh ${must_c} ${lang}
     done
 fi
@@ -176,7 +188,7 @@ if [[ ${stage} -le 0 ]] && [[ ${stop_stage} -ge 0 ]]; then
     ### Task dependent. You have to make data the following preparation part by yourself.
     ### But you can utilize Kaldi recipes in most cases
     echo "***** stage 0: Data Preparation *****"
-    for lang in $(echo ${tgt_lang} | tr '_' ' '); do
+    for lang in $(echo ${tgt_langs} | tr '_' ' '); do
         local/data_prep.sh ${must_c} ${lang}
     done
 fi
@@ -189,56 +201,56 @@ if [[ ${stage} -le 1 ]] && [[ ${stop_stage} -ge 1 ]]; then
     echo "***** stage 1: Feature Generation *****"
     fbankdir=fbank
     # Generate the fbank features; by default 80-dimensional fbanks with pitch on each frame
-    for lang in $(echo ${tgt_lang} | tr '_' ' '); do
-        for x in train.en-${tgt_lang} dev.en-${tgt_lang} tst-COMMON.en-${tgt_lang} tst-HE.en-${tgt_lang}; do
+    for lang in $(echo ${tgt_langs} | tr '_' ' '); do
+        for x in train.en-${tgt_langs} dev.en-${tgt_langs} tst-COMMON.en-${tgt_langs} tst-HE.en-${tgt_langs}; do
             steps/make_fbank_pitch.sh --cmd "$train_cmd" --nj 32 --write_utt2num_frames true \
                 data/${x} exp/make_fbank/${x} ${fbankdir}
         done
     done
 
     # speed-perturbed
-    utils/perturb_data_dir_speed.sh 0.9 data/train.en-${tgt_lang} data/temp1.${tgt_lang}
-    utils/perturb_data_dir_speed.sh 1.0 data/train.en-${tgt_lang} data/temp2.${tgt_lang}
-    utils/perturb_data_dir_speed.sh 1.1 data/train.en-${tgt_lang} data/temp3.${tgt_lang}
-    utils/combine_data.sh --extra-files utt2uniq data/train_sp.en-${tgt_lang} \
-        data/temp1.${tgt_lang} data/temp2.${tgt_lang} data/temp3.${tgt_lang}
-    rm -r data/temp1.${tgt_lang} data/temp2.${tgt_lang} data/temp3.${tgt_lang}
+    utils/perturb_data_dir_speed.sh 0.9 data/train.en-${tgt_langs} data/temp1.${tgt_langs}
+    utils/perturb_data_dir_speed.sh 1.0 data/train.en-${tgt_langs} data/temp2.${tgt_langs}
+    utils/perturb_data_dir_speed.sh 1.1 data/train.en-${tgt_langs} data/temp3.${tgt_langs}
+    utils/combine_data.sh --extra-files utt2uniq data/train_sp.en-${tgt_langs} \
+        data/temp1.${tgt_langs} data/temp2.${tgt_langs} data/temp3.${tgt_langs}
+    rm -r data/temp1.${tgt_langs} data/temp2.${tgt_langs} data/temp3.${tgt_langs}
     steps/make_fbank_pitch.sh --cmd "$train_cmd" --nj 32 --write_utt2num_frames true \
-        data/train_sp.en-${tgt_lang} exp/make_fbank/train_sp.en-${tgt_lang} ${fbankdir}
-    for lang in en ${tgt_lang}; do
-        awk -v p="sp0.9-" '{printf("%s %s%s\n", $1, p, $1);}' data/train.en-${tgt_lang}/utt2spk > data/train_sp.en-${tgt_lang}/utt_map
-        utils/apply_map.pl -f 1 data/train_sp.en-${tgt_lang}/utt_map <data/train.en-${tgt_lang}/text.tc.${lang} >data/train_sp.en-${tgt_lang}/text.tc.${lang}
-        utils/apply_map.pl -f 1 data/train_sp.en-${tgt_lang}/utt_map <data/train.en-${tgt_lang}/text.lc.${lang} >data/train_sp.en-${tgt_lang}/text.lc.${lang}
-        utils/apply_map.pl -f 1 data/train_sp.en-${tgt_lang}/utt_map <data/train.en-${tgt_lang}/text.lc.rm.${lang} >data/train_sp.en-${tgt_lang}/text.lc.rm.${lang}
-        awk -v p="sp1.0-" '{printf("%s %s%s\n", $1, p, $1);}' data/train.en-${tgt_lang}/utt2spk > data/train_sp.en-${tgt_lang}/utt_map
-        utils/apply_map.pl -f 1 data/train_sp.en-${tgt_lang}/utt_map <data/train.en-${tgt_lang}/text.tc.${lang} >>data/train_sp.en-${tgt_lang}/text.tc.${lang}
-        utils/apply_map.pl -f 1 data/train_sp.en-${tgt_lang}/utt_map <data/train.en-${tgt_lang}/text.lc.${lang} >>data/train_sp.en-${tgt_lang}/text.lc.${lang}
-        utils/apply_map.pl -f 1 data/train_sp.en-${tgt_lang}/utt_map <data/train.en-${tgt_lang}/text.lc.rm.${lang} >>data/train_sp.en-${tgt_lang}/text.lc.rm.${lang}
-        awk -v p="sp1.1-" '{printf("%s %s%s\n", $1, p, $1);}' data/train.en-${tgt_lang}/utt2spk > data/train_sp.en-${tgt_lang}/utt_map
-        utils/apply_map.pl -f 1 data/train_sp.en-${tgt_lang}/utt_map <data/train.en-${tgt_lang}/text.tc.${lang} >>data/train_sp.en-${tgt_lang}/text.tc.${lang}
-        utils/apply_map.pl -f 1 data/train_sp.en-${tgt_lang}/utt_map <data/train.en-${tgt_lang}/text.lc.${lang} >>data/train_sp.en-${tgt_lang}/text.lc.${lang}
-        utils/apply_map.pl -f 1 data/train_sp.en-${tgt_lang}/utt_map <data/train.en-${tgt_lang}/text.lc.rm.${lang} >>data/train_sp.en-${tgt_lang}/text.lc.rm.${lang}
+        data/train_sp.en-${tgt_langs} exp/make_fbank/train_sp.en-${tgt_langs} ${fbankdir}
+    for lang in en ${tgt_langs}; do
+        awk -v p="sp0.9-" '{printf("%s %s%s\n", $1, p, $1);}' data/train.en-${tgt_langs}/utt2spk > data/train_sp.en-${tgt_langs}/utt_map
+        utils/apply_map.pl -f 1 data/train_sp.en-${tgt_langs}/utt_map <data/train.en-${tgt_langs}/text.tc.${lang} >data/train_sp.en-${tgt_langs}/text.tc.${lang}
+        utils/apply_map.pl -f 1 data/train_sp.en-${tgt_langs}/utt_map <data/train.en-${tgt_langs}/text.lc.${lang} >data/train_sp.en-${tgt_langs}/text.lc.${lang}
+        utils/apply_map.pl -f 1 data/train_sp.en-${tgt_langs}/utt_map <data/train.en-${tgt_langs}/text.lc.rm.${lang} >data/train_sp.en-${tgt_langs}/text.lc.rm.${lang}
+        awk -v p="sp1.0-" '{printf("%s %s%s\n", $1, p, $1);}' data/train.en-${tgt_langs}/utt2spk > data/train_sp.en-${tgt_langs}/utt_map
+        utils/apply_map.pl -f 1 data/train_sp.en-${tgt_langs}/utt_map <data/train.en-${tgt_langs}/text.tc.${lang} >>data/train_sp.en-${tgt_langs}/text.tc.${lang}
+        utils/apply_map.pl -f 1 data/train_sp.en-${tgt_langs}/utt_map <data/train.en-${tgt_langs}/text.lc.${lang} >>data/train_sp.en-${tgt_langs}/text.lc.${lang}
+        utils/apply_map.pl -f 1 data/train_sp.en-${tgt_langs}/utt_map <data/train.en-${tgt_langs}/text.lc.rm.${lang} >>data/train_sp.en-${tgt_langs}/text.lc.rm.${lang}
+        awk -v p="sp1.1-" '{printf("%s %s%s\n", $1, p, $1);}' data/train.en-${tgt_langs}/utt2spk > data/train_sp.en-${tgt_langs}/utt_map
+        utils/apply_map.pl -f 1 data/train_sp.en-${tgt_langs}/utt_map <data/train.en-${tgt_langs}/text.tc.${lang} >>data/train_sp.en-${tgt_langs}/text.tc.${lang}
+        utils/apply_map.pl -f 1 data/train_sp.en-${tgt_langs}/utt_map <data/train.en-${tgt_langs}/text.lc.${lang} >>data/train_sp.en-${tgt_langs}/text.lc.${lang}
+        utils/apply_map.pl -f 1 data/train_sp.en-${tgt_langs}/utt_map <data/train.en-${tgt_langs}/text.lc.rm.${lang} >>data/train_sp.en-${tgt_langs}/text.lc.rm.${lang}
     done
 
     # Divide into source and target languages
-    for x in train_sp.en-${tgt_lang} dev.en-${tgt_lang} tst-COMMON.en-${tgt_lang} tst-HE.en-${tgt_lang}; do
-        local/divide_lang.sh ${x} ${tgt_lang}
+    for x in train_sp.en-${tgt_langs} dev.en-${tgt_langs} tst-COMMON.en-${tgt_langs} tst-HE.en-${tgt_langs}; do
+        local/divide_lang.sh ${x} ${tgt_langs}
     done
 
-    for x in train_sp.en-${tgt_lang} dev.en-${tgt_lang}; do
+    for x in train_sp.en-${tgt_langs} dev.en-${tgt_langs}; do
         # remove utt having more than 3000 frames
         # remove utt having more than 400 characters
-        for lang in ${tgt_lang} en; do
+        for lang in ${tgt_langs} en; do
             remove_longshortdata.sh --maxframes 3000 --maxchars 400 data/${x}.${lang} data/${x}.${lang}.tmp
         done
 
         # Match the number of utterances between source and target languages
         # extract common lines
-        cut -f 1 -d " " data/${x}.en.tmp/text > data/${x}.${tgt_lang}.tmp/reclist1
-        cut -f 1 -d " " data/${x}.${tgt_lang}.tmp/text > data/${x}.${tgt_lang}.tmp/reclist2
-        comm -12 data/${x}.${tgt_lang}.tmp/reclist1 data/${x}.${tgt_lang}.tmp/reclist2 > data/${x}.en.tmp/reclist
+        cut -f 1 -d " " data/${x}.en.tmp/text > data/${x}.${tgt_langs}.tmp/reclist1
+        cut -f 1 -d " " data/${x}.${tgt_langs}.tmp/text > data/${x}.${tgt_langs}.tmp/reclist2
+        comm -12 data/${x}.${tgt_langs}.tmp/reclist1 data/${x}.${tgt_langs}.tmp/reclist2 > data/${x}.en.tmp/reclist
 
-        for lang in ${tgt_lang} en; do
+        for lang in ${tgt_langs} en; do
             reduce_data_dir.sh data/${x}.${lang}.tmp data/${x}.en.tmp/reclist data/${x}.${lang}
             utils/fix_data_dir.sh --utt_extra_files "text.tc text.lc text.lc.rm" data/${x}.${lang}
         done
@@ -272,10 +284,11 @@ if [[ ${stage} -le 1 ]] && [[ ${stop_stage} -ge 1 ]]; then
 fi
 
 # Dictionary related
-dict=data/lang_1spm/${train_set}_${bpemode}${nbpe}_units_${tgt_case}${suffix}.txt
-nlsyms=data/lang_1spm/${train_set}_non_lang_syms_${tgt_case}${suffix}.txt
-nlsyms_tmp=data/lang_1spm/${train_set}_non_lang_syms_${tgt_case}_tmp${suffix}.txt
-bpemodel=data/lang_1spm/${train_set}_${bpemode}${nbpe}_${tgt_case}${suffix}
+dict=data/lang_1spm/${dname}.txt
+nlsyms=data/lang_1spm/${train_set}_non_lang_syms_${tgt_case}_${suffix}.txt
+nlsyms_tmp=data/lang_1spm/${train_set}_non_lang_syms_${tgt_case}_tmp_${suffix}.txt
+bpemodel=data/lang_1spm/${train_set}_${bpemode}${nbpe}_${tgt_case}_${suffix}
+echo "| dictionary: ${dict}"
 echo "| bpe model: ${bpemodel}"
 if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
     ### Task dependent. You have to check non-linguistic symbols used in the corpus.
@@ -287,7 +300,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
         echo "remove existing non-lang files"
         rm ${nlsyms_tmp}
     fi
-    for lang in $(echo ${tgt_lang} | tr '_' ' '); do
+    for lang in $(echo ${tgt_langs} | tr '_' ' '); do
         grep sp1.0 data/train_sp.en-${lang}.${lang}/text.${tgt_case} | cut -f 2- -d' ' | grep -o -P '&[^;]*;' >> ${nlsyms_tmp}
     done
     
@@ -301,7 +314,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
     # special_symbols="<unk> 1; <s> 2; </s> 3; <pad> 4; <TRANS> 5; <RECOG> 6; <DELAY> 7"
     special_symbols="<unk> 1"
     i=2
-    all_langs=$(echo ${tgt_lang}"_en" | tr '_' ' ')
+    all_langs=$(echo ${tgt_langs}"_en" | tr '_' ' ')
     all_langs_sorted=$(echo ${all_langs[*]}| tr " " "\n" | sort -n | tr "\n" " ")
     echo "all langs sorted: ${all_langs_sorted}"
     for lang in $(echo "${all_langs_sorted}" | tr '_' ' '); do
@@ -313,23 +326,23 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
     cat ${dict}
 
     offset=$(wc -l < ${dict})
-    echo "| offset= ${offset}"
-    input_path=data/lang_1spm/input_en-${tgt_lang}.${tgt_lang}.${tgt_case}${suffix}.txt
+    echo "| offset= ${offset}"
+    input_path=data/lang_1spm/input_en-${tgt_langs}.${tgt_langs}.${tgt_case}_${suffix}.txt
     if [ -f ${input_path} ]; then
         echo "remove existing input text file"
         rm ${input_path}
     fi
 
-    for lang in $(echo ${tgt_lang} | tr '_' ' '); do
+    for lang in $(echo ${tgt_langs} | tr '_' ' '); do
         # grep sp1.0 data/train_sp.en-${lang}.${lang}/text.${tgt_case} | cut -f 2- -d' ' | grep -v -e '^\s*$' >> ${input_path}
         cat data/lang_1spm/input_en-${lang}.${lang}.${tgt_case}.txt >> ${input_path}
     done
     spm_train --user_defined_symbols="$(tr "\n" "," < ${nlsyms})" --input=${input_path} --vocab_size=${nbpe} --model_type=${bpemode} --model_prefix=${bpemodel} --input_sentence_size=100000000 --character_coverage=1.0
     spm_encode --model=${bpemodel}.model --output_format=piece < ${input_path} | tr ' ' '\n' | sort | uniq | awk -v offset=${offset} '{print $0 " " NR+offset}' >> ${dict}
-    echo "| number of tokens in dictionary: $(wc -l ${dict})"
+    echo "| number of tokens in dictionary: $(wc -l ${dict})"
 
     echo "make json files"
-    for lang in $(echo ${tgt_lang} | tr '_' ' '); do
+    for lang in $(echo ${tgt_langs} | tr '_' ' '); do
         train_set_lang=train_sp.en-${lang}.${lang}
         train_dev_lang=dev.en-${lang}.${lang}
         feat_tr_dir_lang=${dumpdir}/${train_set_lang}/delta${do_delta}
@@ -458,12 +471,12 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
         decode_config_lg_pair=${decode_config}.${lg_pair}.yaml
         decode_dir=decode_$(basename ${train_config%.*})_$(basename ${decode_config})_${split}_${lg_pair}_${trans_model}
         feat_trans_dir=${datadir}/${split}
-        echo "| decode_dir: ${decode_dir}"
-        echo "| feat_trans_dir: ${feat_trans_dir}"
+        echo "| decode_dir: ${decode_dir}"
+        echo "| feat_trans_dir: ${feat_trans_dir}"
 
-        if [ ! -f "${feat_trans_dir}/split${nj}utt_${tgt_lang}/${lg_pair}.${nj}.json" ]; then
+        if [ ! -f "${feat_trans_dir}/split${nj}utt_${tgt_langs}/${lg_pair}.${nj}.json" ]; then
             # split data
-            splitjson.py --parts ${nj} --tgt_lang ${tgt_lang} ${feat_trans_dir}/${lg_pair}.json
+            splitjson.py --parts ${nj} --tgt_lang ${tgt_langs} ${feat_trans_dir}/${lg_pair}.json
             echo "Finished splitting json file."
         else
             echo "json file has been already split."
@@ -480,7 +493,7 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
                 --ngpu ${ngpu} \
                 --backend ${backend} \
                 --batchsize 0 \
-                --trans-json ${feat_trans_dir}/split${nj}utt_${tgt_lang}/${lg_pair}.JOB.json \
+                --trans-json ${feat_trans_dir}/split${nj}utt_${tgt_langs}/${lg_pair}.JOB.json \
                 --result-label ${expdir}/${decode_dir}/data.JOB.json \
                 --model ${expdir}/results/${trans_model} \
                 --verbose ${verbose}

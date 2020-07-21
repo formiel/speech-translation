@@ -189,7 +189,7 @@ bash run.sh --stage 4 --stop-stage 4 --ngpu 8 \
                --tag ${tag} \
                --asr-model ${pretrained_weights} \
                --st-model ${pretrained_weights} \
-               --tgt_lang ${tgt_langs}
+               --tgt_langs ${tgt_langs}
 
 ```
 where

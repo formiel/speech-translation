@@ -284,10 +284,10 @@ if [[ ${stage} -le 1 ]] && [[ ${stop_stage} -ge 1 ]]; then
 fi
 
 # Dictionary related
-dict=data/lang_1spm/${dname}.txt
-nlsyms=data/lang_1spm/${train_set}_non_lang_syms_${tgt_case}_${suffix}.txt
-nlsyms_tmp=data/lang_1spm/${train_set}_non_lang_syms_${tgt_case}_tmp_${suffix}.txt
-bpemodel=data/lang_1spm/${train_set}_${bpemode}${nbpe}_${tgt_case}_${suffix}
+dict=data/lang_1spm/use_${dprefix}/${dname}.txt
+nlsyms=data/lang_1spm/use_${dprefix}/${train_set}_non_lang_syms_${tgt_case}_${suffix}.txt
+nlsyms_tmp=data/lang_1spm/use_${dprefix}/${train_set}_non_lang_syms_${tgt_case}_tmp_${suffix}.txt
+bpemodel=data/lang_1spm/use_${dprefix}/${train_set}_${bpemode}${nbpe}_${tgt_case}_${suffix}
 echo "| dictionary: ${dict}"
 echo "| bpe model: ${bpemodel}"
 if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
@@ -302,19 +302,20 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
     fi
     for lang in $(echo ${tgt_langs} | tr '_' ' '); do
         grep sp1.0 data/train_sp.en-${lang}.${lang}/text.${tgt_case} | cut -f 2- -d' ' | grep -o -P '&[^;]*;' >> ${nlsyms_tmp}
+        grep sp1.0 data/train_sp.en-${lang}.en/text.${src_case} | cut -f 2- -d' ' | grep -o -P '&[^;]*;' >> ${nlsyms_tmp}
     done
     
     cat ${nlsyms_tmp} | sort | uniq > ${nlsyms}
     rm ${nlsyms_tmp}
     cat ${nlsyms}
 
-    echo "make a joint source and target dictionary"
+    echo "*** Make a joint source and target dictionary ***"
     # echo "<unk> 1" > ${dict} # <unk> must be 1, 0 will be used for "blank" in CTC
     # add more special symbols for later use
     # special_symbols="<unk> 1; <s> 2; </s> 3; <pad> 4; <TRANS> 5; <RECOG> 6; <DELAY> 7"
     special_symbols="<unk> 1"
     i=2
-    all_langs=$(echo ${tgt_langs}"_en" | tr '_' ' ')
+    all_langs=$(echo "${tgt_langs}_en" | tr '_' ' ')
     all_langs_sorted=$(echo ${all_langs[*]}| tr " " "\n" | sort -n | tr "\n" " ")
     echo "all langs sorted: ${all_langs_sorted}"
     for lang in $(echo "${all_langs_sorted}" | tr '_' ' '); do
@@ -327,15 +328,16 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
 
     offset=$(wc -l < ${dict})
     echo "| offset= ${offset}"
-    input_path=data/lang_1spm/input_en-${tgt_langs}.${tgt_langs}.${tgt_case}_${suffix}.txt
+    input_path=data/lang_1spm/use_${dprefix}/input_en-${tgt_langs}.${tgt_langs}.${tgt_case}_${suffix}.txt
     if [ -f ${input_path} ]; then
         echo "remove existing input text file"
         rm ${input_path}
     fi
 
     for lang in $(echo ${tgt_langs} | tr '_' ' '); do
-        # grep sp1.0 data/train_sp.en-${lang}.${lang}/text.${tgt_case} | cut -f 2- -d' ' | grep -v -e '^\s*$' >> ${input_path}
-        cat data/lang_1spm/input_en-${lang}.${lang}.${tgt_case}.txt >> ${input_path}
+        grep sp1.0 data/train_sp.en-${lang}.${lang}/text.${tgt_case} | cut -f 2- -d' ' | grep -v -e '^\s*$' >> ${input_path}
+        grep sp1.0 data/train_sp.en-${lang}.en/text.${src_case} | cut -f 2- -d' ' | grep -v -e '^\s*$' >> ${input_path}
+        # cat data/lang_1spm/use_${dprefix}/input_en-${lang}.${lang}.${tgt_case}.txt >> ${input_path}
     done
     spm_train --user_defined_symbols="$(tr "\n" "," < ${nlsyms})" --input=${input_path} --vocab_size=${nbpe} --model_type=${bpemode} --model_prefix=${bpemodel} --input_sentence_size=100000000 --character_coverage=1.0
     spm_encode --model=${bpemodel}.model --output_format=piece < ${input_path} | tr ' ' '\n' | sort | uniq | awk -v offset=${offset} '{print $0 " " NR+offset}' >> ${dict}
@@ -345,34 +347,29 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
     for lang in $(echo ${tgt_langs} | tr '_' ' '); do
         train_set_lang=train_sp.en-${lang}.${lang}
         train_dev_lang=dev.en-${lang}.${lang}
-        feat_tr_dir_lang=${dumpdir}/${train_set_lang}/delta${do_delta}
-        feat_dt_dir_lang=${dumpdir}/${train_dev_lang}/delta${do_delta}
+        feat_tr_dir_lang=${dumpdir}/use_${dprefix}/${train_set_lang}/delta${do_delta}
+        feat_dt_dir_lang=${dumpdir}/use_${dprefix}/${train_dev_lang}/delta${do_delta}
+        jname=data-en-${lang}_${bpemode}${nbpe}.${tgt_case}_${suffix}.json
 
         data2json.sh --nj 16 --feat ${feat_tr_dir_lang}/feats.scp --text data/${train_set_lang}/text.${tgt_case} --bpecode ${bpemodel}.model --lang ${lang} \
-            data/${train_set_lang} ${dict} > ${feat_tr_dir_lang}/data-en-${lang}_${bpemode}${nbpe}.${tgt_case}${suffix}.json
+            data/${train_set_lang} ${dict} > ${feat_tr_dir_lang}/${jname}
         data2json.sh --feat ${feat_dt_dir_lang}/feats.scp --text data/${train_dev_lang}/text.${tgt_case} --bpecode ${bpemodel}.model --lang ${lang} \
-            data/${train_dev_lang} ${dict} > ${feat_dt_dir_lang}/data-en-${lang}_${bpemode}${nbpe}.${tgt_case}${suffix}.json
+            data/${train_dev_lang} ${dict} > ${feat_dt_dir_lang}/${jname}
         
         trans_set_lang="tst-COMMON.en-${lang}.${lang} tst-HE.en-${lang}.${lang}"
         for ttask in ${trans_set_lang}; do
-            feat_trans_dir=${dumpdir}/${ttask}/delta${do_delta}
+            feat_trans_dir=${dumpdir}/use_${dprefix}/${ttask}/delta${do_delta}
             data2json.sh --feat ${feat_trans_dir}/feats.scp --text data/${ttask}/text.${tgt_case} --bpecode ${bpemodel}.model --lang ${lang} \
-                data/${ttask} ${dict} > ${feat_trans_dir}/data-en-${lang}_${bpemode}${nbpe}.${tgt_case}${suffix}.json
+                data/${ttask} ${dict} > ${feat_trans_dir}/${jname}
         done
 
         # update json (add source references)
-        for x in ${train_set_lang} ${train_dev_lang}; do
-            feat_dir=${dumpdir}/${x}/delta${do_delta}
+        for x in ${train_set_lang} ${train_dev_lang} ${trans_set_lang}; do
+            echo "add source references to ${x}"
+            feat_dir=${dumpdir}/use_${dprefix}/${x}/delta${do_delta}
             data_dir=data/$(echo ${x} | cut -f 1 -d ".").en-${lang}.en
             update_json.sh --text ${data_dir}/text.${src_case} --bpecode ${bpemodel}.model \
-                ${feat_dir}/data-en-${lang}_${bpemode}${nbpe}.${tgt_case}${suffix}.json ${data_dir} ${dict}
-        done
-        for ttask in ${trans_set_lang}; do
-            echo "add source references to ${ttask}"
-            feat_trans_dir=${dumpdir}/${ttask}/delta${do_delta}
-            data_dir=data/$(echo ${ttask} | cut -f 1 -d ".").en-${lang}.en
-            update_json.sh --text ${data_dir}/text.${src_case} --bpecode ${bpemodel}.model \
-                ${feat_trans_dir}/data-en-${lang}_${bpemode}${nbpe}.${tgt_case}${suffix}.json ${data_dir} ${dict}
+                ${feat_dir}/${jname} ${data_dir} ${dict}
         done
     done
 fi

@@ -253,12 +253,12 @@ fi
 
 
 # Paths to dictionary and bpe model 
-dname=${train_set}_${bpemode}${nbpe}units_${tgt_case}_${suffix}
-dict=data/lang_1spm/use_${dprefix}/${dname}
-nlsyms=data/lang_1spm/use_${dprefix}/${train_set}_non_lang_syms_${tgt_case}_${suffix}
-nlsyms_tmp=data/lang_1spm/use_${dprefix}/${train_set}_non_lang_syms_${tgt_case}_tmp_${suffix}
-bpemodel=data/lang_1spm/use_${dprefix}/${train_set}_${bpemode}${nbpe}_${tgt_case}_${suffix}
 if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
+    dname=${train_set}_${bpemode}${nbpe}_${tgt_case}_${suffix}
+    bpemodel=data/lang_1spm/use_${dprefix}/${dname}
+    nlsyms=data/lang_1spm/use_${dprefix}/${train_set}_non_lang_syms_${tgt_case}_${suffix}
+    nlsyms_tmp=data/lang_1spm/use_${dprefix}/${train_set}_non_lang_syms_tmp_${tgt_case}_${suffix}
+
     ### Task dependent. You have to check non-linguistic symbols used in the corpus.
     echo "***** stage 2: Dictionary and Json Data Preparation *****"
     mkdir -p data/lang_1spm/use_${dprefix}
@@ -266,11 +266,11 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
     # Create joint dictionary for both source and target languages
     if [ ${use_joint_src_tgt_dict} ]; then
         echo "*** Create a JOINT dictionary for source and target languages ***"
-        dict=${dict}.txt
+        dict=${bpemodel}.txt
         nlsyms=${nlsyms}.txt
         nlsyms_tmp=${nlsyms_tmp}.txt
         echo "| source and target dictionary: ${dict}"
-        echo "| source and target bpe model: ${bpemodel}"
+        echo "| source and target bpe model: ${bpemodel}.model"
 
         echo "make a non-linguistic symbol list for all languages"
         if [ -f ${nlsyms_tmp} ]; then
@@ -303,7 +303,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
 
         offset=$(wc -l < ${dict})
         echo "| offset= ${offset}"
-        input_path=data/lang_1spm/use_${dprefix}/input_${dprefix}_en-${tgt_langs}.${tgt_case}_${suffix}.txt
+        input_path=data/lang_1spm/use_${dprefix}/input_${dprefix}_en-${tgt_langs}_${tgt_case}_${suffix}.txt
         if [ -f ${input_path} ]; then
             echo "remove existing input text file"
             rm ${input_path}
@@ -351,24 +351,29 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
         done
 
     # Create separate dictionaries: 1 for source transcription, 1 joint for all target langs
-    else 
+    else
         echo "*** Create SEPARATE dictionaries for source and target languages ***"
-        dict_src=${dict}.src.txt
+        nlsyms=data/lang_1spm/use_${dprefix}/${train_set}_non_lang_syms_${tgt_case}_${suffix}
+        nlsyms_tmp=data/lang_1spm/use_${dprefix}/${train_set}_non_lang_syms_tmp_${tgt_case}_${suffix} 
+        dname=${train_set}_${bpemode}_src${nbpe_src}${src_case}_tgt${nbpe}${tgt_case}_${suffix}
+        bpemodel=data/lang_1spm/use_${dprefix}/${dname}
+
+        dict_src=data/lang_1spm/use_${dprefix}/${dname}.src.txt
         nlsyms_src=${nlsyms}.src.txt
         nlsyms_tmp_src=${nlsyms_tmp}.src.txt
         bpemodel_src=${bpemodel}.src
 
-        dict_tgt=${dict}.tgt.txt
+        dict_tgt=data/lang_1spm/use_${dprefix}/${dname}.tgt.txt
         nlsyms_tgt=${nlsyms}.tgt.txt
         nlsyms_tmp_tgt=${nlsyms_tmp}.tgt.txt
         bpemodel_tgt=${bpemodel}.tgt
 
         echo "| source dictionary: ${dict_src}"
         echo "| target dictionary: ${dict_tgt}"
-        echo "| source bpe model: ${bpemodel_src}"
-        echo "| target bpe model: ${bpemodel_tgt}"
+        echo "| source bpe model: ${bpemodel_src}.model"
+        echo "| target bpe model: ${bpemodel_tgt}.model"
 
-        # Create joint dictionary for target languages
+        # Create a joint dictionary for target languages
         echo "make a non-linguistic symbol list for target languages"
         if [ -f ${nlsyms_tmp_tgt} ]; then
             echo "remove existing non-lang files"
@@ -401,7 +406,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
 
         offset=$(wc -l < ${dict_tgt})
         echo "| offset= ${offset}"
-        input_path=data/lang_1spm/use_${dprefix}/input_${dprefix}_tgt_${tgt_langs}.${tgt_case}_${suffix}.txt
+        input_path=data/lang_1spm/use_${dprefix}/input_${dprefix}_en-${tgt_langs}_tgt_${tgt_case}_${suffix}.txt
         if [ -f ${input_path} ]; then
             echo "remove existing input text file"
             rm ${input_path}
@@ -412,7 +417,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
         done
         spm_train --user_defined_symbols="$(tr "\n" "," < ${nlsyms_tgt})" --input=${input_path} --vocab_size=${nbpe} --model_type=${bpemode} --model_prefix=${bpemodel_tgt} --input_sentence_size=100000000 --character_coverage=1.0
         spm_encode --model=${bpemodel_tgt}.model --output_format=piece < ${input_path} | tr ' ' '\n' | sort | uniq | awk -v offset=${offset} '{print $0 " " NR+offset}' >> ${dict_tgt}
-        echo "| number of tokens in dictionary: $(wc -l ${dict_tgt})"
+        echo "| number of tokens in joint target dictionary: $(wc -l ${dict_tgt})"
 
         echo "make json files"
         for lang in $(echo ${tgt_langs} | tr '_' ' '); do
@@ -420,7 +425,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
             train_dev_lang=dev.en-${lang}.${lang}
             feat_tr_dir_lang=${dumpdir}/use_${dprefix}/${train_set_lang}/delta${do_delta}
             feat_dt_dir_lang=${dumpdir}/use_${dprefix}/${train_dev_lang}/delta${do_delta}
-            jname=data_${dprefix}_en-${lang}_${bpemode}${nbpe}.${tgt_case}_${suffix}.json
+            jname=data_${dprefix}_en-${lang}_${bpemode}_src${nbpe_src}${src_case}_tgt${nbpe}${tgt_case}_${suffix}.json
 
             data2json.sh --nj 16 --feat ${feat_tr_dir_lang}/feats.scp --text data/${train_set_lang}/text.${tgt_case} --bpecode ${bpemodel_tgt}.model --lang ${lang} \
                 data/${train_set_lang} ${dict_tgt} > ${feat_tr_dir_lang}/${jname}
@@ -435,7 +440,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
             done
         done
 
-        # Create dictionay for source
+        # Create dictionay for English source transcription
         # Create joint dictionary for target languages
         echo "make a non-linguistic symbol list for source language"
         if [ -f ${nlsyms_tmp_src} ]; then
@@ -460,7 +465,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
 
         offset=$(wc -l < ${dict_src})
         echo "| offset= ${offset}"
-        input_path=data/lang_1spm/use_${dprefix}/input_${dprefix}_src-en_${tgt_langs}.${src_case}_${suffix}.txt
+        input_path=data/lang_1spm/use_${dprefix}/input_${dprefix}_en-${tgt_langs}_src_${src_case}_${suffix}.txt
         if [ -f ${input_path} ]; then
             echo "remove existing input text file"
             rm ${input_path}
@@ -478,6 +483,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
             train_set_lang=train_sp.en-${lang}.${lang}
             train_dev_lang=dev.en-${lang}.${lang}
             trans_set_lang="tst-COMMON.en-${lang}.${lang} tst-HE.en-${lang}.${lang}"
+            jname=data_${dprefix}_en-${lang}_${bpemode}_src${nbpe_src}${src_case}_tgt${nbpe}${tgt_case}_${suffix}.json
 
             sets="${train_set_lang} ${train_dev_lang}"
             sets+=" "${trans_set_lang}

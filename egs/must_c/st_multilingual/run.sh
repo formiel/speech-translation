@@ -548,7 +548,7 @@ if [[ ${stage} -le 4 ]] && [[ ${stop_stage} -ge 4 ]]; then
     if [ "${exist_snaphots}" = true ]; then
         ckpt_nums=$(ls $resume_dir | grep snapshot | sed 's/[^0-9]*//g' | sed 's/\n/" "/g')
         last_ep=$(echo "${ckpt_nums[*]}" | sort -nr | head -n1)
-        echo "Resume training from the last snapshot ${resume_dir}/snapshot.iter.${last_ep}"
+        echo "Resume training from last snapshot ${resume_dir}/snapshot.iter.${last_ep}"
         resume=${resume_dir}/snapshot.iter.${last_ep}
     fi
 

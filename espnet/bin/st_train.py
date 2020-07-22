@@ -361,6 +361,7 @@ def main(cmd_args):
     if args.dict_src is not None and args.dict_tgt is not None:
         if args.dict_src == args.dict_tgt:
             logging.info('*** Use JOINT dictionary for source and target languages')
+            args.use_joint_src_tgt_dict = True
             with open(args.dict_src, 'rb') as f:
                 dictionary = f.readlines()
             char_list = [entry.decode('utf-8').split(' ')[0]
@@ -371,6 +372,7 @@ def main(cmd_args):
             args.char_list_tgt = char_list
         else:
             logging.info('*** Use SEPARATE dictionaries for source and target languages')
+            args.use_joint_src_tgt_dict = False
             with open(args.dict_src, 'rb') as f:
                 dictionary = f.readlines()
             char_list = [entry.decode('utf-8').split(' ')[0]

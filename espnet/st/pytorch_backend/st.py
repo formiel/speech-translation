@@ -303,39 +303,56 @@ def train(args):
         train_jpaths = [os.path.join(args.train_json, fname) for fname in sorted(os.listdir(args.train_json)) if fname.endswith('.json')]
         valid_jpaths = [os.path.join(args.valid_json, fname) for fname in sorted(os.listdir(args.valid_json)) if fname.endswith('.json')]
 
-        all_langs = list(sorted(set([l for p in lang_pairs for l in p.split('-')])))
-        args.langs_dict = {}
-        offset = 2 # for <blank> and <unk>
-        for i, lang in enumerate(all_langs):
-            args.langs_dict[f'<2{lang}>'] = offset + i
+        logging.info(f'| use_joint_src_tgt_dict = {args.use_joint_src_tgt_dict}')
+        if args.use_joint_src_tgt_dict:
+            all_langs = list(sorted(set([l for p in lang_pairs for l in p.split('-')])))
+            langs_dict = {}
+            offset = 2 # for <blank> and <unk>
+            for i, lang in enumerate(all_langs):
+                langs_dict[f'<2{lang}>'] = offset + i
+            args.langs_dict_tgt = langs_dict
+            args.langs_dict_src = langs_dict
+        else:
+            langs_dict_tgt = {}
+            langs_dict_src = {}
+            offset = 2 # for <blank> and <unk>
+            for i, lang in enumerate(tgt_langs):
+                langs_dict_tgt[f'<2{lang}>'] = offset + i
+            for i, lang in enumerate(src_lang):
+                langs_dict_src[f'<2{lang}>'] = offset + i
+            args.langs_dict_tgt = langs_dict_tgt
+            args.langs_dict_src = langs_dict_src
 
         logging.info(f'| train_jpaths: {train_jpaths}')
         logging.info(f'| valid_jpaths: {valid_jpaths}')
         logging.info(f'| lang_pairs  : {lang_pairs}')
-        logging.info(f'| langs_dict : {args.langs_dict}')
+        logging.info(f'| langs_dict_tgt : {args.langs_dict_tgt}')
+        logging.info(f'| langs_dict_src : {args.langs_dict_src}')
     else:
         train_jpaths = [args.train_json]
         valid_jpaths = [args.valid_json]
-        args.langs_dict = None
+        args.langs_dict_tgt = None
+        args.langs_dict_src = None
 
     # get input and output dimension info 
-    idim = 0
-    odim = 0
+    idims = []
+    odims_src = []
+    odims_tgt = []
     for i, jpath in enumerate(valid_jpaths):
         with open(jpath, 'rb') as f:
             valid_json = json.load(f)['utts']
         utts = list(valid_json.keys())
-        idim_tmp = int(valid_json[utts[0]]['input'][0]['shape'][-1])
-        odim_tmp = int(valid_json[utts[0]]['output'][0]['shape'][-1])
-        logging.info('| pair {}: idim={}, odim={}'.format(lang_pairs[i], idim_tmp, odim_tmp))
-        if idim == 0:
-            idim = idim_tmp
-        else:
-            assert idim == idim_tmp
-        if odim < odim_tmp:
-            odim = odim_tmp               
+        idims.append(int(valid_json[utts[0]]['input'][0]['shape'][-1]))
+        odims_tgt.append(int(valid_json[utts[0]]['output'][1]['shape'][-1]))
+        odims_src.append(int(valid_json[utts[0]]['output'][0]['shape'][-1]))
+
+    assert len(set(idims)) == 1; idim = idims[0]
+    assert len(set(odims_tgt)) == 1; odim_tgt = odims_tgt[0]
+    assert len(set(odims_src)) ==1; odim_src = odims_src[0]
+
     logging.info('#input dims : ' + str(idim))
-    logging.info('#output dims: ' + str(odim))
+    logging.info('#tgt output dims: ' + str(odim_tgt))
+    logging.info('#src output dims: ' + str(odim_src))
 
     # Initialize with pre-trained ASR encoder and MT decoder
     if args.enc_init is not None or args.dec_init is not None:

@@ -303,7 +303,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
 
         offset=$(wc -l < ${dict})
         echo "| offset= ${offset}"
-        input_path=data/lang_1spm/use_${dprefix}/input_${dprefix}_en-${tgt_langs}_${tgt_case}_${suffix}.txt
+        input_path=data/lang_1spm/use_${dprefix}/input_${dprefix}_${bpemode}${nbpe}_en-${tgt_langs}_${tgt_case}_${suffix}.txt
         if [ -f ${input_path} ]; then
             echo "remove existing input text file"
             rm ${input_path}

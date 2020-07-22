@@ -66,8 +66,12 @@ def get_parser(parser=None, required=True):
                         help='Output directory')
     parser.add_argument('--debugmode', default=1, type=int,
                         help='Debugmode')
-    parser.add_argument('--dict', required=required,
-                        help='Dictionary')
+    # parser.add_argument('--dict', required=required,
+    #                     help='Dictionary')
+    parser.add_argument('--dict_src', required=required,
+                        help='Source dictionary')
+    parser.add_argument('--dict_tgt', required=required,
+                        help='Target dictionary')
     parser.add_argument('--seed', default=1, type=int,
                         help='Random seed')
     parser.add_argument('--debugdir', type=str,
@@ -354,16 +358,37 @@ def main(cmd_args):
     np.random.seed(args.seed)
 
     # load dictionary for debug log
-    if args.dict is not None:
-        with open(args.dict, 'rb') as f:
-            dictionary = f.readlines()
-        char_list = [entry.decode('utf-8').split(' ')[0]
-                     for entry in dictionary]
-        char_list.insert(0, '<blank>')
-        char_list.append('<eos>')
-        args.char_list = char_list
+    if args.dict_src is not None and args.dict_tgt is not None:
+        if args.dict_src == args.dict_tgt:
+            logging.info('*** Use JOINT dictionary for source and target languages')
+            with open(args.dict_src, 'rb') as f:
+                dictionary = f.readlines()
+            char_list = [entry.decode('utf-8').split(' ')[0]
+                        for entry in dictionary]
+            char_list.insert(0, '<blank>')
+            char_list.append('<eos>')
+            args.char_list_src = char_list
+            args.char_list_tgt = char_list
+        else:
+            logging.info('*** Use SEPARATE dictionaries for source and target languages')
+            with open(args.dict_src, 'rb') as f:
+                dictionary = f.readlines()
+            char_list = [entry.decode('utf-8').split(' ')[0]
+                        for entry in dictionary]
+            char_list.insert(0, '<blank>')
+            char_list.append('<eos>')
+            args.char_list_src = char_list
+
+            with open(args.dict_tgt, 'rb') as f:
+                dictionary = f.readlines()
+            char_list = [entry.decode('utf-8').split(' ')[0]
+                        for entry in dictionary]
+            char_list.insert(0, '<blank>')
+            char_list.append('<eos>')
+            args.char_list_tgt = char_list
     else:
-        args.char_list = None
+        args.char_list_src = None
+        args.char_list_tgt = None
 
     # train
     logging.info('backend = ' + args.backend)

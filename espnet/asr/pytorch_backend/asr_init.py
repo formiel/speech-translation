@@ -214,6 +214,29 @@ def load_trained_model(model_path):
 
     return model, train_args
 
+def load_trained_model_multi(model_path):
+    """Load the trained model for recognition.
+
+    Args:
+        model_path (str): Path to model.***.best
+
+    """
+    idim, odim_tgt, odim_src, train_args = get_model_conf(
+        model_path, os.path.join(os.path.dirname(model_path), 'model.json'))
+
+    logging.warning('reading model parameters from ' + model_path)
+
+    if hasattr(train_args, "model_module"):
+        model_module = train_args.model_module
+    else:
+        model_module = "espnet.nets.pytorch_backend.e2e_asr:E2E"
+    model_class = dynamic_import(model_module)
+    model = model_class(idim, odim_tgt, odim_src, train_args)
+
+    torch_load(model_path, model)
+
+    return model, train_args
+
 
 def get_trained_model_state_dict(model_path):
     """Extract the trained model state dict for pre-initialization.
@@ -275,6 +298,83 @@ def load_trained_modules(idim, odim, args, interface=ASRInterface):
 
     model_class = dynamic_import(args.model_module)
     main_model = model_class(idim, odim, args)
+    assert isinstance(main_model, interface)
+    logging.info('| Before loading pretrained models: {}'.format(sum(p.sum().item() for p in main_model.parameters())))
+
+    main_state_dict = main_model.state_dict()
+
+    logging.warning('model(s) found for pre-initialization')
+    for model_path, modules in [(enc_model_path, enc_modules),
+                                (dec_model_path, dec_modules)]:
+        if model_path is not None:
+            if os.path.isfile(model_path):
+                model_state_dict, is_lm = get_trained_model_state_dict(model_path)
+
+                if all(mod.startswith('dual_decoder') for mod in modules):
+                    dual_modules = modules
+                    modules = filter_modules_dual_decoders(model_state_dict, modules)
+                else:
+                    modules = filter_modules(model_state_dict, modules)
+
+                if is_lm:
+                    partial_state_dict, modules = get_partial_lm_state_dict(model_state_dict, modules)
+                else:
+                    if dual_modules is not None:
+                        partial_state_dict, modules = get_partial_state_dict_dual_decoders(model_state_dict, modules)
+                    else:
+                        partial_state_dict = get_partial_state_dict(model_state_dict, modules)
+
+                    if partial_state_dict:
+                        if transfer_verification(main_state_dict, partial_state_dict, modules):
+                            logging.warning('loading %s from model: %s', list(set(['.'.join(m.split('.')[:2]) for m in modules])), model_path)
+                            
+                            for k in partial_state_dict.keys():
+                                logging.warning('override %s' % k)
+                            main_state_dict.update(partial_state_dict)
+                        else:
+                            logging.warning('modules %s in model %s don\'t match your training config',
+                                            modules, model_path)
+                        # Random check
+                        k1 = 'decoder.decoders.0.src_attn.linear_v.weight'
+                        k2 = 'decoder_asr.decoders.0.src_attn.linear_v.weight'
+                        if k1 in partial_state_dict and k2 in partial_state_dict:
+                            a = partial_state_dict[k1]
+                            b = partial_state_dict[k2]
+                            logging.info('TO'*20)
+                            logging.info(f'diff = {torch.norm(a - b)}')
+                            logging.info(f'a is b = {a is b}')
+                    
+            else:
+                logging.warning('model was not found : %s', model_path)
+
+    main_model.load_state_dict(main_state_dict)
+
+    logging.info('| After loading pretrained models: {}'.format(sum(p.sum().item() for p in main_model.parameters())))
+
+    return main_model
+
+
+def load_trained_modules_multi(idim, odim_tgt, odim_src, args, interface=ASRInterface):
+    """Load model encoder or/and decoder modules with ESPNET pre-trained model(s).
+
+    Args:
+        idim (int): initial input dimension.
+        odim (int): initial output dimension.
+        args (Namespace): The initial model arguments.
+        interface (Interface): ASRInterface or STInterface or TTSInterface.
+
+    Return:
+        model (torch.nn.Module): The model with pretrained modules.
+
+    """
+    enc_model_path = args.enc_init
+    dec_model_path = args.dec_init
+    enc_modules = args.enc_init_mods
+    dec_modules = args.dec_init_mods
+    dual_modules = None
+
+    model_class = dynamic_import(args.model_module)
+    main_model = model_class(idim, odim_tgt, odim_src, args)
     assert isinstance(main_model, interface)
     logging.info('| Before loading pretrained models: {}'.format(sum(p.sum().item() for p in main_model.parameters())))
 

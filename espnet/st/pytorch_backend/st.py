@@ -41,8 +41,8 @@ from espnet.asr.asr_utils import snapshot_object
 from espnet.asr.asr_utils import torch_load
 from espnet.asr.asr_utils import torch_resume
 from espnet.asr.asr_utils import torch_snapshot
-from espnet.asr.pytorch_backend.asr_init import load_trained_model
-from espnet.asr.pytorch_backend.asr_init import load_trained_modules
+from espnet.asr.pytorch_backend.asr_init import load_trained_model, load_trained_model_multi
+from espnet.asr.pytorch_backend.asr_init import load_trained_modules, load_trained_modules_multi
 
 from espnet.nets.pytorch_backend.e2e_asr import pad_list
 import espnet.nets.pytorch_backend.lm.default as lm_pytorch
@@ -357,11 +357,11 @@ def train(args):
     # Initialize with pre-trained ASR encoder and MT decoder
     if args.enc_init is not None or args.dec_init is not None:
         logging.info('Loading pretrained ASR encoder and/or MT decoder ...')
-        model = load_trained_modules(idim, odim, args, interface=STInterface)
+        model = load_trained_modules_multi(idim, odim_tgt, odim_src, args, interface=STInterface)
         logging.info(f'*** Model *** \n {model}')
     else:
         model_class = dynamic_import(args.model_module)
-        model = model_class(idim, odim, args)
+        model = model_class(idim, odim_tgt, odim_src, args)
         logging.info(f'*** Model *** \n {model}')
     assert isinstance(model, STInterface)
     logging.info(f'| Number of model parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}')
@@ -386,7 +386,7 @@ def train(args):
     model_conf = args.outdir + '/model.json'
     with open(model_conf, 'wb') as f:
         logging.info('writing a model config file to ' + model_conf)
-        f.write(json.dumps((idim, odim, vars(args)),
+        f.write(json.dumps((idim, odim_tgt, odim_src, vars(args)),
                            indent=4, ensure_ascii=False, sort_keys=True).encode('utf_8'))
     for key in sorted(vars(args).keys()):
         logging.info('ARGS: ' + key + ': ' + str(vars(args)[key]))
@@ -790,7 +790,7 @@ def trans(args):
 
     """
     set_deterministic_pytorch(args)
-    model, train_args = load_trained_model(args.model)
+    model, train_args = load_trained_model_multi(args.model)
     assert isinstance(model, STInterface)
     # args.ctc_weight = 0.0
     model.trans_args = args

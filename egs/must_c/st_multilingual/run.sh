@@ -423,8 +423,8 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
         for lang in $(echo ${tgt_langs} | tr '_' ' '); do
             train_set_lang=train_sp.en-${lang}.${lang}
             train_dev_lang=dev.en-${lang}.${lang}
-            feat_tr_dir_lang=${dumpdir}/use_${dprefix}/${train_set_lang}/delta${do_delta}
-            feat_dt_dir_lang=${dumpdir}/use_${dprefix}/${train_dev_lang}/delta${do_delta}
+            feat_tr_dir_lang=${dumpdir}/${train_set_lang}/delta${do_delta}
+            feat_dt_dir_lang=${dumpdir}/${train_dev_lang}/delta${do_delta}
             jname=data_${dprefix}_en-${lang}_${bpemode}_src${nbpe_src}${src_case}_tgt${nbpe}${tgt_case}_${suffix}.json
 
             data2json.sh --nj 16 --feat ${feat_tr_dir_lang}/feats.scp --text data/${train_set_lang}/text.${tgt_case} --bpecode ${bpemodel_tgt}.model --lang ${lang} \
@@ -434,7 +434,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
             
             trans_set_lang="tst-COMMON.en-${lang}.${lang} tst-HE.en-${lang}.${lang}"
             for ttask in ${trans_set_lang}; do
-                feat_trans_dir=${dumpdir}/use_${dprefix}/${ttask}/delta${do_delta}
+                feat_trans_dir=${dumpdir}/${ttask}/delta${do_delta}
                 data2json.sh --feat ${feat_trans_dir}/feats.scp --text data/${ttask}/text.${tgt_case} --bpecode ${bpemodel_tgt}.model --lang ${lang} \
                     data/${ttask} ${dict_tgt} > ${feat_trans_dir}/${jname}
             done

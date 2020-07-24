@@ -7,6 +7,7 @@
 """Decoder definition."""
 
 import torch
+import logging
 
 from espnet.nets.pytorch_backend.transformer.attention import MultiHeadedAttention
 from espnet.nets.pytorch_backend.transformer.decoder_layer import DecoderLayer

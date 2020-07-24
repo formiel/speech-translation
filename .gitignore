@@ -27,3 +27,6 @@ egs/must_c/st_multilingual/_TEX.md
 egs/must_c/st_multilingual/*.slurm
 egs/must_c/st_multilingual/utils.sh
 egs/must_c/st_multilingual/wt_*
+egs/must_c/st_multilingual/create_data*
+egs/must_c/st_multilingual/run-train.sh
+egs/must_c/st_multilingual/conf/training_after/*

@@ -232,8 +232,11 @@ class E2E(STInterface, torch.nn.Module):
         self.reporter = Reporter()
 
         # self.lsm_weight = a
-        self.criterion = LabelSmoothingLoss(self.odim, self.ignore_id, args.lsm_weight,
+        self.criterion_st = LabelSmoothingLoss(self.odim_tgt, self.ignore_id, args.lsm_weight,
                                             args.transformer_length_normalized_loss)
+        self.criterion_asr = LabelSmoothingLoss(self.odim_src, self.ignore_id, args.lsm_weight,
+                                            args.transformer_length_normalized_loss)
+
         # self.verbose = args.verbose
         self.adim = args.adim
 
@@ -329,13 +332,9 @@ class E2E(STInterface, torch.nn.Module):
         # 0. Extract target language ID
         # src_lang_ids = None
         tgt_lang_ids, tgt_lang_ids_src = None, None
-        if self.multilingual:
-            tgt_lang_ids = ys_pad[:, 0:1]
-            ys_pad = ys_pad[:, 1:]  # remove target language ID in the beggining
-
         if self.one_to_many:
             tgt_lang_ids = ys_pad[:, 0:1]
-            ys_pad = ys_pad[:, 1:]
+            ys_pad = ys_pad[:, 1:] # remove target language ID in the beggining
             
             if self.do_asr:
                 tgt_lang_ids_src = ys_pad_src[:, 0:1]
@@ -359,9 +358,6 @@ class E2E(STInterface, torch.nn.Module):
             ys_in_pad_src, ys_out_pad_src = add_sos_eos(ys_pad_src, self.sos_src, self.eos_src, self.ignore_id) # bs x max_lens_src
 
         # replace <sos> with target language ID
-        if self.replace_sos:
-            ys_in_pad = torch.cat([tgt_lang_ids, ys_in_pad[:, 1:]], dim=1)
-
         if self.lang_tok == "decoder-pre":
             ys_in_pad = torch.cat([tgt_lang_ids, ys_in_pad[:, 1:]], dim=1)
             if self.do_asr:
@@ -394,7 +390,7 @@ class E2E(STInterface, torch.nn.Module):
 
         # 3. compute attention loss
         loss_asr, loss_mt = 0.0, 0.0
-        loss_att = self.criterion(pred_pad, ys_out_pad)
+        loss_att = self.criterion_st(pred_pad, ys_out_pad)
         # Multi-task w/ ASR
         if self.do_asr:
             # forward ASR decoder
@@ -416,7 +412,7 @@ class E2E(STInterface, torch.nn.Module):
             else:
                 pred_pad_asr, _ = self.decoder_asr(ys_in_pad_src, ys_mask_src, hs_pad, hs_mask)
             # compute loss
-            loss_asr = self.criterion(pred_pad_asr, ys_out_pad_src)
+            loss_asr = self.criterion_asr(pred_pad_asr, ys_out_pad_src)
         # Multi-task w/ MT
         if self.mt_weight > 0:
             # forward MT encoder
@@ -431,17 +427,17 @@ class E2E(STInterface, torch.nn.Module):
             # forward MT decoder
             pred_pad_mt, _ = self.decoder(ys_in_pad, ys_mask, hs_pad_mt, hs_mask_mt)
             # compute loss
-            loss_mt = self.criterion(pred_pad_mt, ys_out_pad)
+            loss_mt = self.criterion_st(pred_pad_mt, ys_out_pad)
 
-        self.acc = th_accuracy(pred_pad.view(-1, self.odim), ys_out_pad,
+        self.acc = th_accuracy(pred_pad.view(-1, self.odim_tgt), ys_out_pad,
                                ignore_label=self.ignore_id)
         if pred_pad_asr is not None:
-            self.acc_asr = th_accuracy(pred_pad_asr.view(-1, self.odim), ys_out_pad_src,
+            self.acc_asr = th_accuracy(pred_pad_asr.view(-1, self.odim_src), ys_out_pad_src,
                                        ignore_label=self.ignore_id)
         else:
             self.acc_asr = 0.0
         if pred_pad_mt is not None:
-            self.acc_mt = th_accuracy(pred_pad_mt.view(-1, self.odim), ys_out_pad,
+            self.acc_mt = th_accuracy(pred_pad_mt.view(-1, self.odim_tgt), ys_out_pad,
                                       ignore_label=self.ignore_id)
         else:
             self.acc_mt = 0.0

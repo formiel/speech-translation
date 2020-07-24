@@ -48,14 +48,14 @@ use_joint_src_tgt_dict=     # if true, use one dictionary for source and target
 
 # bpemode (unigram or bpe)
 bpemode=bpe
-nbpe=     # for target dictionary or joint source and target dictionary
-nbpe_src= # for source dictionary only
+nbpe=             # for target dictionary or joint source and target dictionary
+nbpe_src=         # for source dictionary only
 
 # decoding related
 decode_config=
-trans_model=    # set a model to be used for decoding e.g. 'model.acc.best'
+trans_model=      # set a model to be used for decoding e.g. 'model.acc.best'
 trans_set=
-max_iter_eval=  # get best model upto a specified iteration
+max_iter_eval=    # get best model upto a specified iteration
 
 # model average related (only for transformer)
 n_average=5                  # the number of ST models to be averaged
@@ -67,8 +67,7 @@ tag="" # tag for managing experiments.
 
 . utils/parse_options.sh || exit 1;
 
-# Modify params after parsing from command line
-# Multilingual related parameters
+# Language related parameters
 tgt_langs=$(echo "$tgt_langs" | tr '_' '\n' | sort | tr '\n' '_')
 tgt_langs=$(echo ${tgt_langs::-1})
 lang_pairs=""
@@ -87,8 +86,8 @@ else
 fi
 
 # training configuration
-train_config=./conf/training/${tag}.yaml
-if [ ${use_joint_src_tgt_dict} ]; then
+train_config=./conf/training_after/${tag}.yaml
+if [[ ${use_joint_src_tgt_dict} == "true" ]]; then
     dprefix="dict1"
 else
     dprefix="dict2"
@@ -252,7 +251,6 @@ if [[ ${stage} -le 1 ]] && [[ ${stop_stage} -ge 1 ]]; then
 fi
 
 
-# Paths to dictionary and bpe model 
 if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
     dname=${train_set}_${bpemode}${nbpe}_${tgt_case}_${suffix}
     bpemodel=data/lang_1spm/use_${dprefix}/${dname}
@@ -264,7 +262,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
     mkdir -p data/lang_1spm/use_${dprefix}
 
     # Create joint dictionary for both source and target languages
-    if [ ${use_joint_src_tgt_dict} ]; then
+    if [[ ${use_joint_src_tgt_dict} == "true" ]]; then
         echo "*** Create a JOINT dictionary for source and target languages ***"
         dict=${bpemodel}.txt
         nlsyms=${nlsyms}.txt
@@ -490,7 +488,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
             # update json (add source references)
             for x in ${sets}; do
                 echo "add source references to ${x}"
-                feat_dir=${dumpdir}/use_${dprefix}/${x}/delta${do_delta}
+                feat_dir=${dumpdir}/${x}/delta${do_delta}
                 data_dir=data/$(echo ${x} | cut -f 1 -d ".").en-${lang}.en
                 update_json.sh --text ${data_dir}/text.${src_case} --bpecode ${bpemodel_src}.model \
                     ${feat_dir}/${jname} ${data_dir} ${dict_src}
@@ -528,15 +526,30 @@ echo "| expdir: ${expdir}"
 echo "| tensorboard_dir: ${tensorboard_dir}"
 
 # Data input folders
-datadir=${datadir}/${tgt_langs}
-train_json_dir=${datadir}/use_${dprefix}/train_sp
-val_json_dir=${datadir}/use_${dprefix}/dev
-dict=${datadir}/lang_1spm/use_${dprefix}/${dname}.txt
+datadir=${datadir}/${tgt_langs}/use_${dprefix}/src${nbpe_src}_tgt${nbpe}
+if [[ $lang_count -eq 1 ]]; then
+    train_json_dir=${datadir}/train_sp/en-${tgt_langs}.json
+    val_json_dir=${datadir}/dev/en-${tgt_langs}.json 
+else
+    train_json_dir=${datadir}/train_sp
+    val_json_dir=${datadir}/dev
+fi
+
+if [[ ${use_joint_src_tgt_dict} == "true" ]]; then
+    dname=${train_set}_${bpemode}${nbpe}_${tgt_case}_${suffix}
+    dict_src=${datadir}/lang_1spm/${dname}.txt
+    dict_tgt=${datadir}/lang_1spm/${dname}.txt
+else
+    dname=${train_set}_${bpemode}_src${nbpe_src}${src_case}_tgt${nbpe}${tgt_case}_${suffix}
+    dict_src=${datadir}/lang_1spm/${dname}.src.txt
+    dict_tgt=${datadir}/lang_1spm/${dname}.tgt.txt
+fi
 
 echo "*** Paths to training data and dictionary ***"
 echo "| train_json_dir: ${train_json_dir}"
 echo "| val_json_dir: ${val_json_dir}"
-echo "| dictionary: ${dict}"
+echo "| source dictionary: ${dict_src}"
+echo "| target dictionary: ${dict_tgt}"
 
 if [[ ${stage} -le 4 ]] && [[ ${stop_stage} -ge 4 ]]; then
     echo "***** stage 4: Network Training *****"
@@ -563,7 +576,8 @@ if [[ ${stage} -le 4 ]] && [[ ${stop_stage} -ge 4 ]]; then
         --outdir ${expdir}/results \
         --tensorboard-dir ${tensorboard_dir} \
         --debugmode ${debugmode} \
-        --dict ${dict} \
+        --dict_src ${dict_src} \
+        --dict_tgt ${dict_tgt} \
         --debugdir ${expdir} \
         --minibatches ${N} \
         --seed ${seed} \

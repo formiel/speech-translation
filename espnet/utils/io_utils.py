@@ -46,7 +46,8 @@ class LoadInputsAndTargets(object):
                  use_second_target=False,
                  preprocess_args=None,
                  keep_all_data_on_mem=False,
-                 langs_dict=None,
+                 langs_dict_tgt=None,
+                 langs_dict_src=None,
                  src_lang='en',
                  ):
         self._loaders = {}
@@ -84,7 +85,8 @@ class LoadInputsAndTargets(object):
             self.preprocess_args = dict(preprocess_args)
 
         self.keep_all_data_on_mem = keep_all_data_on_mem
-        self.langs_dict = langs_dict
+        self.langs_dict_tgt = langs_dict_tgt
+        self.langs_dict_src = langs_dict_src
         self.src_lang = src_lang
 
     def __call__(self, batch):
@@ -142,11 +144,11 @@ class LoadInputsAndTargets(object):
                         x = np.fromiter(map(int, inp['tokenid'].split()),
                                         dtype=np.int64)
                         # Added lang_id to x
-                        if self.langs_dict is not None:
+                        if self.langs_dict_tgt is not None and self.langs_dict_src is not None:
                             if inp['name'] == 'target1':
-                                x = (self.langs_dict['<2'+info['lang']+'>'], x)
+                                x = (self.langs_dict_tgt['<2'+info['lang']+'>'], x)
                             else:
-                                x = (self.langs_dict[f'<2{self.src_lang}>'], x)
+                                x = (self.langs_dict_src[f'<2{self.src_lang}>'], x)
                     else:
                         # ======= New format =======
                         # {"input":

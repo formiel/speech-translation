@@ -446,7 +446,6 @@ def train(args):
     num_langs = len(tgt_langs)
     train_all_pairs = [None] * num_langs
     valid_all_pairs = [None] * num_langs
-    # check_data = {}
     batch_size = args.batch_size//num_langs if num_langs > 1 else args.batch_size
     for i, jpath in enumerate(train_jpaths):
         with open(jpath, 'rb') as f:
@@ -460,7 +459,6 @@ def train(args):
                         batch_frames_in=args.batch_frames_in,
                         batch_frames_out=args.batch_frames_out,
                         batch_frames_inout=args.batch_frames_inout)
-        # check_data[lang_pairs[i]] = list(train_json.keys())
             
     for i, jpath in enumerate(valid_jpaths):
         with open(jpath, 'rb') as f:
@@ -473,15 +471,6 @@ def train(args):
                         batch_frames_in=args.batch_frames_in,
                         batch_frames_out=args.batch_frames_out,
                         batch_frames_inout=args.batch_frames_inout)
-        # check_data[lang_pairs[i]] = list(valid_json.keys())
-
-    # print(f'len(train_all_pairs) = {len(train_all_pairs)}')
-    # print(f'len(valid_all_pairs) = {len(valid_all_pairs)}')
-    # for i, batch_langs in enumerate(train_all_pairs):
-    #     print(f'batch for lang {lang_pairs[i]}')
-    #     for batch_lang in batch_langs:
-    #         print(f'len(batch_lang) = {len(batch_lang)}')
-    #     print('-'*5)
 
     if num_langs > 1:
         cycle_train = [cycle(x) for x in train_all_pairs]
@@ -509,37 +498,6 @@ def train(args):
     else:
         train = train_all_pairs[0]
         valid = valid_all_pairs[0]
-    
-    # print(f'num_batches_train = {num_batches_train}')
-    # print(f'num_batches_valid = {num_batches_valid}')
-    # print(f'len(train) = {len(train)}')
-    # print(f'len(valid) = {len(valid)}')
-
-    # print('*** Checking results of make_batchset() ***')
-    # for i, batch in enumerate(train):
-    #     # if i == 0:
-    #     #     print(batch)
-    #     ids = [sample[0] for sample in batch]
-    #     langs = [sample[1]['lang'] for sample in batch]
-    #     pairs = ['en-'+l for l in langs]
-    #     for i in range(len(ids)):
-    #         r = ids[i] in list(check_data[pairs[i]])
-    #         print(f'ids[i]={ids[i]} in {check_data[pairs[i]]}: {r}')
-    #         print('-')
-    #         if r:
-    #             check_data[pairs[i]].remove(ids[i])
-
-    #     print(f'len(batch) = {len(batch)}')
-    #     print(f'langs in batch: {langs}')
-    #     print('-'*5)
-    #     # if i > 5:
-    #     #     break
-
-    # print('*** Samples that are not used yet ***')
-    # for k, v in check_data.items():
-    #     print(k, v)
-    #     print('-'*5)
-    # print('-'*20)
 
     load_tr = LoadInputsAndTargets(
         mode='asr', load_output=True, preprocess_conf=args.preprocess_conf,
@@ -555,27 +513,13 @@ def train(args):
         langs_dict_src=args.langs_dict_src,
         src_lang=src_lang
     )
-    # print('LoadInputsAndTargets()')
-    # features, targets = load_cv(train[0])
-    # print(f'*** features: {features} ***')
-    # for f in features:
-    #     # print(f)
-    #     print(f'len(f) = {len(f)}')
-    #     print('---')
-    # print(f'*** targets : {targets} ***')
-    # y1, y2 = zip(*targets)
-    # # print(f'y1 = {y1}')
-    # # print(f'y2 = {y2}')
-    # for s in zip(y1, y2):
-    #     print(len(s[0][1]), len(s[1][1]))
-    # print('-'*20)
 
     # Setup a converter
     converter = CustomConverter(subsampling_factor=subsampling_factor, dtype=dtype,
                                 asr_task=args.asr_weight > 0)
                                 
     # hack to make batchsize argument as 1
-    # actual bathsize is included in a list
+    # actual batchsize is included in a list
     # default collate function converts numpy array to pytorch tensor
     # we used an empty collate function instead which returns list
     n_iter_processes = args.n_iter_processes
@@ -593,28 +537,6 @@ def train(args):
         dataset=TransformDataset(valid, lambda data: converter([load_cv(data)])),
         batch_size=1, shuffle=False, collate_fn=lambda x: x[0],
         num_workers=n_iter_processes, pin_memory=False)}
-
-    # xs_pad, ilens, ys_pad, ys_pad_asr = converter([load_cv(valid[0])])
-    # print('*** xs_pad ***')
-    # # print(xs_pad)
-    # print(xs_pad.size())
-    # print('*** ilens ***')
-    # print(ilens)
-    # print('*** ys_pad ***')
-    # # print(ys_pad)
-    # print(ys_pad.size())
-    # print('*** ys_pad_asr ***')
-    # print(ys_pad_asr)
-    # print('-'*20)
-
-    # print(train_iter['main'])
-    # i=0
-    # for item in train_iter['main']:
-    #     print(item)
-    #     print('-'*5)
-    #     if i > 8:
-    #         break
-    #     i += 1
 
     # Set up a trainer
     updater = CustomUpdater(
@@ -801,7 +723,7 @@ def trans(args):
             raise ValueError("use '--api v2' option to decode with non-default language model")
         rnnlm = lm_pytorch.ClassifierWithState(
             lm_pytorch.RNNLM(
-                len(train_args.char_list), rnnlm_args.layer, rnnlm_args.unit))
+                len(train_args.char_list_tgt), rnnlm_args.layer, rnnlm_args.unit))
         torch_load(args.rnnlm, rnnlm)
         rnnlm.eval()
     else:
@@ -836,46 +758,60 @@ def trans(args):
                 batch = [(name, js[name])]
                 feat = load_inputs_and_targets(batch)[0][0]
                 if args.recog_and_trans:    # for cross
-                    logging.info('***** Recognize and Translate simultaneously for cross decoders ******')
+                    logging.info('***** Dual decoders: Recognize and Translate simultaneously ******')
                     if args.beam_search_type == 'sum':
                         logging.info('=== Beam search by sum of scores ===')
-                        nbest_hyps = model.recognize_and_translate_sum(feat, args, train_args.char_list, rnnlm, 
+                        nbest_hyps = model.recognize_and_translate_sum(feat, args, 
+                                                                        train_args.char_list_tgt,
+                                                                        train_args.char_list_src, 
+                                                                        rnnlm, 
                                                                         decode_asr_weight=args.decode_asr_weight,
                                                                         score_is_prob=args.score_is_prob,
                                                                         ratio_diverse_st=args.ratio_diverse_st,
                                                                         ratio_diverse_asr=args.ratio_diverse_asr,
                                                                         debug=args.debug)
-                        new_js[name] = add_results_to_json_st_asr(js[name], nbest_hyps, train_args.char_list)
+                        new_js[name] = add_results_to_json_st_asr(js[name], nbest_hyps, 
+                                                                    train_args.char_list_tgt,
+                                                                    train_args.char_list_src)
                     elif args.beam_search_type == 'sum-mono':
                         logging.info('=== Beam search by sum of scores ===')
-                        nbest_hyps = model.recognize_and_translate_sum(feat, args, train_args.char_list, rnnlm, 
+                        nbest_hyps = model.recognize_and_translate_sum(feat, args, 
+                                                                        train_args.char_list_tgt,
+                                                                        train_args.char_list_src,
+                                                                        rnnlm, 
                                                                         decode_asr_weight=args.decode_asr_weight,
                                                                         score_is_prob=args.score_is_prob,
                                                                         ratio_diverse_st=args.ratio_diverse_st,
                                                                         ratio_diverse_asr=args.ratio_diverse_asr,
                                                                         debug=args.debug)
-                        new_js[name] = add_results_to_json(js[name], nbest_hyps, train_args.char_list)
+                        # new_js[name] = add_results_to_json(js[name], nbest_hyps, train_args.char_list)
+                        new_js[name] = add_results_to_json_st_asr(js[name], nbest_hyps, 
+                                                                    train_args.char_list_tgt,
+                                                                    train_args.char_list_src)
                     elif args.beam_search_type == 'separate':
                         logging.info('=== Beam search using beam_cross hypothesis ===')
-                        nbest_hyps, nbest_hyps_asr = model.recognize_and_translate_separate(feat, args, train_args.char_list, rnnlm)
-                        new_js[name] = add_results_to_json(js[name], nbest_hyps, train_args.char_list)
-                        new_js[name]['output'].append(add_results_to_json(js[name], nbest_hyps_asr, train_args.char_list, output_idx=1)['output'][0])
+                        nbest_hyps, nbest_hyps_asr = model.recognize_and_translate_separate(feat, args, 
+                                                                        train_args.char_list_tgt,
+                                                                        train_args.char_list_src,
+                                                                        rnnlm)
+                        new_js[name] = add_results_to_json(js[name], nbest_hyps, train_args.char_list_tgt)
+                        new_js[name]['output'].append(add_results_to_json(js[name], nbest_hyps_asr, train_args.char_list_src, output_idx=1)['output'][0])
                     else:
                         raise NotImplementedError
                 elif args.recog and args.trans:
                     logging.info('***** Recognize and Translate separately ******')
-                    nbest_hyps_asr = model.recognize(feat, args, train_args.char_list, rnnlm)
-                    nbest_hyps = model.translate(feat, args, train_args.char_list, rnnlm)
-                    new_js[name] = add_results_to_json(js[name], nbest_hyps, train_args.char_list)
-                    new_js[name]['output'].append(add_results_to_json(js[name], nbest_hyps_asr, train_args.char_list, output_idx=1)['output'][0])
+                    nbest_hyps_asr = model.recognize(feat, args, train_args.char_list_src, rnnlm)
+                    nbest_hyps = model.translate(feat, args, train_args.char_list_tgt, rnnlm)
+                    new_js[name] = add_results_to_json(js[name], nbest_hyps, train_args.char_list_tgt)
+                    new_js[name]['output'].append(add_results_to_json(js[name], nbest_hyps_asr, train_args.char_list_src, output_idx=1)['output'][0])
                 elif args.recog:
                     logging.info('***** Recognize ONLY ******')
-                    nbest_hyps_asr = model.recognize(feat, args, train_args.char_list, rnnlm)
-                    new_js[name] = add_results_to_json(js[name], nbest_hyps_asr, train_args.char_list)
+                    nbest_hyps_asr = model.recognize(feat, args, train_args.char_list_src, rnnlm)
+                    new_js[name] = add_results_to_json(js[name], nbest_hyps_asr, train_args.char_list_src)
                 elif args.trans:
                     logging.info('***** Translate ONLY ******')
-                    nbest_hyps = model.translate(feat, args, train_args.char_list, rnnlm)
-                    new_js[name] = add_results_to_json(js[name], nbest_hyps, train_args.char_list)
+                    nbest_hyps = model.translate(feat, args, train_args.char_list_tgt, rnnlm)
+                    new_js[name] = add_results_to_json(js[name], nbest_hyps, train_args.char_list_tgt)
                 else:
                     raise NotImplementedError
 

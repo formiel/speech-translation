@@ -102,7 +102,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         """Return PlotAttentionReport."""
         return PlotAttentionReport
 
-    def __init__(self, idim, odim, args, ignore_id=-1):
+    def __init__(self, idim, odim_tgt, odim_src, args, ignore_id=-1):
         """Construct an E2E object.
 
         :param int idim: dimension of inputs
@@ -193,7 +193,8 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
             logging.warning(f'WARNING: Resort to using self.cross_self_from == embedding for cross at self attention.')
 
         self.dual_decoder = DualDecoder(
-                odim=odim,
+                odim_tgt,
+                odim_src,
                 attention_dim=args.adim,
                 attention_heads=args.aheads,
                 linear_units=args.dunits,
@@ -213,16 +214,21 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         )
 
         self.pad = 0
-        self.sos = odim - 1
-        self.eos = odim - 1
-        self.odim = odim
+        self.sos_tgt = odim_tgt - 1
+        self.eos_tgt = odim_tgt - 1
+        self.odim_tgt = odim_tgt
+        self.sos_src = odim_src - 1
+        self.eos_src = odim_src - 1
+        self.odim_src = odim_src
         self.idim = idim
         self.ignore_id = ignore_id
         self.subsample = get_subsample(args, mode='st', arch='transformer')
         self.reporter = Reporter()
 
         # self.lsm_weight = a
-        self.criterion = LabelSmoothingLoss(self.odim, self.ignore_id, args.lsm_weight,
+        self.criterion_st = LabelSmoothingLoss(self.odim_tgt, self.ignore_id, args.lsm_weight,
+                                            args.transformer_length_normalized_loss)
+        self.criterion_asr = LabelSmoothingLoss(self.odim_src, self.ignore_id, args.lsm_weight,
                                             args.transformer_length_normalized_loss)
         # self.verbose = args.verbose
         self.adim = args.adim
@@ -231,7 +237,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         self.mt_weight = getattr(args, "mt_weight", 0.0)
         if self.mt_weight > 0:
             self.encoder_mt = Encoder(
-                idim=odim,
+                idim=odim_tgt,
                 attention_dim=args.adim,
                 attention_heads=args.aheads,
                 linear_units=args.dunits,
@@ -244,7 +250,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
             )
         self.reset_parameters(args)  # place after the submodule initialization
         if args.mtlalpha > 0.0:
-            self.ctc = CTC(odim, args.adim, args.dropout_rate, ctc_type=args.ctc_type, reduce=True)
+            self.ctc = CTC(odim_tgt, args.adim, args.dropout_rate, ctc_type=args.ctc_type, reduce=True)
         else:
             self.ctc = None
 
@@ -256,12 +262,6 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         else:
             self.error_calculator = None
         self.rnnlm = None
-
-        # multilingual E2E-ST related
-        self.multilingual = getattr(args, "multilingual", False)
-        self.replace_sos = getattr(args, "replace_sos", False)
-        if self.multilingual:
-            assert self.replace_sos
 
         if self.lang_tok == "encoder-pre-sum":
             self.language_embeddings = build_embedding(self.langs_dict, self.idim, padding_idx=self.pad)
@@ -292,10 +292,6 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         # 0. Extract target language ID
         # src_lang_ids = None
         tgt_lang_ids, tgt_lang_ids_src = None, None
-        if self.multilingual:
-            tgt_lang_ids = ys_pad[:, 0:1]
-            ys_pad = ys_pad[:, 1:]  # remove target language ID in the beggining
-
         if self.one_to_many:
             tgt_lang_ids = ys_pad[:, 0:1]
             ys_pad = ys_pad[:, 1:]  # remove target language ID in the beggining
@@ -316,14 +312,10 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         self.hs_pad = hs_pad
 
         # 2. forward decoder
-        ys_in_pad, ys_out_pad = add_sos_eos(ys_pad, self.sos, self.eos, self.ignore_id) # bs x max_lens
+        ys_in_pad, ys_out_pad = add_sos_eos(ys_pad, self.sos_tgt, self.eos_tgt, self.ignore_id) # bs x max_lens
 
         if self.do_asr:
-            ys_in_pad_src, ys_out_pad_src = add_sos_eos(ys_pad_src, self.sos, self.eos, self.ignore_id) # bs x max_lens_src
-
-        # replace <sos> with target language ID
-        if self.replace_sos:
-            ys_in_pad = torch.cat([tgt_lang_ids, ys_in_pad[:, 1:]], dim=1)
+            ys_in_pad_src, ys_out_pad_src = add_sos_eos(ys_pad_src, self.sos_src, self.eos_src, self.ignore_id) # bs x max_lens_src
 
         if self.lang_tok == "decoder-pre":
             ys_in_pad = torch.cat([tgt_lang_ids, ys_in_pad[:, 1:]], dim=1)
@@ -357,10 +349,10 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
 
         # 3. compute attention loss
         loss_asr, loss_mt = 0.0, 0.0
-        loss_att = self.criterion(pred_pad, ys_out_pad)
+        loss_att = self.criterion_st(pred_pad, ys_out_pad)
 
         # compute loss
-        loss_asr = self.criterion(pred_pad_asr, ys_out_pad_src)
+        loss_asr = self.criterion_asr(pred_pad_asr, ys_out_pad_src)
         # Multi-task w/ MT
         if self.mt_weight > 0:
             # forward MT encoder
@@ -375,17 +367,17 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
             # forward MT decoder
             pred_pad_mt, _ = self.decoder(ys_in_pad, ys_mask, hs_pad_mt, hs_mask_mt)
             # compute loss
-            loss_mt = self.criterion(pred_pad_mt, ys_out_pad)
+            loss_mt = self.criterion_st(pred_pad_mt, ys_out_pad)
 
-        self.acc = th_accuracy(pred_pad.view(-1, self.odim), ys_out_pad,
+        self.acc = th_accuracy(pred_pad.view(-1, self.odim_tgt), ys_out_pad,
                                ignore_label=self.ignore_id)
         if pred_pad_asr is not None:
-            self.acc_asr = th_accuracy(pred_pad_asr.view(-1, self.odim), ys_out_pad_src,
+            self.acc_asr = th_accuracy(pred_pad_asr.view(-1, self.odim_src), ys_out_pad_src,
                                        ignore_label=self.ignore_id)
         else:
             self.acc_asr = 0.0
         if pred_pad_mt is not None:
-            self.acc_mt = th_accuracy(pred_pad_mt.view(-1, self.odim), ys_out_pad,
+            self.acc_mt = th_accuracy(pred_pad_mt.view(-1, self.odim_tgt), ys_out_pad,
                                       ignore_label=self.ignore_id)
         else:
             self.acc_mt = 0.0
@@ -448,7 +440,10 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         return enc_output.squeeze(0)
 
     def recognize_and_translate_sum(self, x, trans_args, 
-                                    char_list=None, rnnlm=None, use_jit=False, 
+                                    char_list_tgt=None,
+                                    char_list_src=None,
+                                    rnnlm=None,
+                                    use_jit=False, 
                                     decode_asr_weight=1.0, 
                                     score_is_prob=False, 
                                     ratio_diverse_st=0.0,
@@ -467,27 +462,20 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         logging.info(f'| ratio_diverse_st = {ratio_diverse_st}')
         logging.info(f'| ratio_diverse_asr = {ratio_diverse_asr}')
 
-        # prepare sos
-        if getattr(trans_args, "tgt_lang", False):
-            if self.replace_sos:
-                y = char_list.index(trans_args.tgt_lang)
-        else:
-            y = self.sos
-
         if self.one_to_many and self.lang_tok == 'decoder-pre':
             tgt_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[-1])
-            y = char_list.index(tgt_lang_id)
+            y = char_list_tgt.index(tgt_lang_id)
             logging.info(f'tgt_lang_id: {tgt_lang_id} - y: {y}')
 
             src_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[0])
-            y_asr = char_list.index(src_lang_id)
+            y_asr = char_list_src.index(src_lang_id)
             logging.info(f'src_lang_id: {src_lang_id} - y_asr: {y_asr}')
         else:
-            y = self.sos
-            y_asr = self.sos
+            y = self.sos_tgt
+            y_asr = self.sos_src
         
-        logging.info(f'<sos> index: {str(y)}; <sos> mark: {char_list[y]}')
-        logging.info(f'<sos> index asr: {str(y_asr)}; <sos> mark asr: {char_list[y_asr]}')
+        logging.info(f'<sos> index: {str(y)}; <sos> mark: {char_list_tgt[y]}')
+        logging.info(f'<sos> index asr: {str(y_asr)}; <sos> mark asr: {char_list_src[y_asr]}')
 
         enc_output = self.encode(x).unsqueeze(0)
         h = enc_output.squeeze(0)
@@ -554,7 +542,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                                                          (ys, ys_mask, enc_output))
                     local_att_scores = traced_decoder(ys, ys_mask, enc_output)[0]
                 else:
-                    if hyp['yseq'][-1] != self.eos or hyp['yseq_asr'][-1] != self.eos or i < 2:
+                    if hyp['yseq'][-1] != self.eos_tgt or hyp['yseq_asr'][-1] != self.eos_src or i < 2:
                         cross_mask = create_cross_mask(ys, ys_asr, self.ignore_id, wait_k_cross=self.wait_k_asr)
                         cross_mask_asr = create_cross_mask(ys_asr, ys, self.ignore_id, wait_k_cross=self.wait_k_st)
                         local_att_scores, _, local_att_scores_asr, _ = self.dual_decoder.forward_one_step(ys, ys_mask, ys_asr, ys_mask_asr, enc_output,
@@ -562,9 +550,9 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                                                                                                           cross_self=self.cross_self, cross_src=self.cross_src,
                                                                                                           cross_self_from=self.cross_self_from,
                                                                                                           cross_src_from=self.cross_src_from)
-                    if (hyp['yseq'][-1] == self.eos and i > 2) or i < self.wait_k_asr:
+                    if (hyp['yseq'][-1] == self.eos_tgt and i > 2) or i < self.wait_k_asr:
                         local_att_scores = None
-                    if (hyp['yseq_asr'][-1] == self.eos and i > 2) or i < self.wait_k_st:
+                    if (hyp['yseq_asr'][-1] == self.eos_src and i > 2) or i < self.wait_k_st:
                         local_att_scores_asr = None
 
                 if local_att_scores is not None and local_att_scores_asr is not None:
@@ -670,28 +658,28 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
             hyps = hyps_best_kept
             logging.debug('number of pruned hypothes: ' + str(len(hyps)))
 
-            if char_list is not None:
-                logging.info('best hypo: ' + ''.join([char_list[int(x)] for x in hyps[0]['yseq']]))
-                logging.info('best hypo asr: ' + ''.join([char_list[int(x)] for x in hyps[0]['yseq_asr']]))
+            if char_list_tgt is not None and char_list_src is not None:
+                logging.info('best hypo: ' + ''.join([char_list_tgt[int(x)] for x in hyps[0]['yseq']]))
+                logging.info('best hypo asr: ' + ''.join([char_list_src[int(x)] for x in hyps[0]['yseq_asr']]))
 
             # add eos in the final loop to avoid that there are no ended hyps
             if i == maxlen - 1:
                 logging.info('adding <eos> in the last postion in the loop')
                 for hyp in hyps:
-                    if hyp['yseq'][-1] != self.eos:
-                        hyp['yseq'].append(self.eos)
+                    if hyp['yseq'][-1] != self.eos_tgt:
+                        hyp['yseq'].append(self.eos_tgt)
             if i == maxlen_asr - 1:
                 logging.info('adding <eos> in the last postion in the loop for asr')
                 for hyp in hyps:
-                    if hyp['yseq_asr'][-1] != self.eos:
-                        hyp['yseq_asr'].append(self.eos)
+                    if hyp['yseq_asr'][-1] != self.eos_src:
+                        hyp['yseq_asr'].append(self.eos_src)
 
             # add ended hypothes to a final list, and removed them from current hypothes
             # (this will be a problem, number of hyps < beam)
             remained_hyps = []
 
             for hyp in hyps:
-                if hyp['yseq'][-1] == self.eos and hyp['yseq_asr'][-1] == self.eos:
+                if hyp['yseq'][-1] == self.eos_tgt and hyp['yseq_asr'][-1] == self.eos_src:
                     # only store the sequence that has more than minlen outputs
                     # also add penalty
                     if len(hyp['yseq']) > minlen and len(hyp['yseq_asr']) > minlen_asr:
@@ -715,10 +703,10 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                 logging.info('no hypothesis. Finish decoding.')
                 break
 
-            if char_list is not None:
+            if char_list_tgt is not None and char_list_src is not None:
                 for hyp in hyps:
-                    logging.info('hypo: ' + ''.join([char_list[int(x)] for x in hyp['yseq'][1:]]))
-                    logging.info('hypo asr: ' + ''.join([char_list[int(x)] for x in hyp['yseq_asr'][1:]]))
+                    logging.info('hypo: ' + ''.join([char_list_tgt[int(x)] for x in hyp['yseq'][1:]]))
+                    logging.info('hypo asr: ' + ''.join([char_list_src[int(x)] for x in hyp['yseq_asr'][1:]]))
 
             logging.info('number of ended hypothes: ' + str(len(ended_hyps)))
 
@@ -732,7 +720,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
             trans_args = Namespace(**vars(trans_args))
             trans_args.minlenratio = max(0.0, trans_args.minlenratio - 0.1)
             trans_args.minlenratio_asr = max(0.0, trans_args.minlenratio_asr - 0.1)
-            return self.recognize_and_translate_sum(x, trans_args, char_list, rnnlm)
+            return self.recognize_and_translate_sum(x, trans_args, char_list_tgt, char_list_src, rnnlm)
 
         logging.info('total log probability: ' + str(nbest_hyps[0]['score']))
         logging.info('normalized log probability: ' + str(nbest_hyps[0]['score'] / len(nbest_hyps[0]['yseq'])))

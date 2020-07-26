@@ -627,7 +627,7 @@ def add_results_to_json(js, nbest_hyps, char_list, output_idx=0):
     return new_js
 
 
-def add_results_to_json_st_asr(js, nbest_hyps, char_list):
+def add_results_to_json_st_asr(js, nbest_hyps, char_list_tgt, char_list_src):
     """Add N-best results to json.
 
     Args:
@@ -647,7 +647,7 @@ def add_results_to_json_st_asr(js, nbest_hyps, char_list):
 
     for n, hyp in enumerate(nbest_hyps, 1):
         # parse hypothesis for st
-        rec_text, rec_token, rec_tokenid, score = parse_hypothesis(hyp, char_list)
+        rec_text, rec_token, rec_tokenid, score = parse_hypothesis(hyp, char_list_tgt)
 
         # copy st ground-truth
         out_dic = dict(js['output'][0].items())
@@ -661,7 +661,7 @@ def add_results_to_json_st_asr(js, nbest_hyps, char_list):
         new_js['output'][0] = out_dic
 
         # parse hypothesis for asr
-        rec_text_asr, rec_token_asr, rec_tokenid_asr, _ = parse_hypothesis(hyp, char_list, dkey="yseq_asr")
+        rec_text_asr, rec_token_asr, rec_tokenid_asr, _ = parse_hypothesis(hyp, char_list_src, dkey="yseq_asr")
         # copy asr ground-truth
         out_dic_asr = dict(js['output'][1].items())
         out_dic_asr['name'] += '[%d]' % n

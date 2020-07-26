@@ -214,6 +214,7 @@ def load_trained_model(model_path):
 
     return model, train_args
 
+
 def load_trained_model_multi(model_path):
     """Load the trained model for recognition.
 
@@ -267,6 +268,45 @@ def get_trained_model_state_dict(model_path):
     logging.info(f'Loading pre-trained model...')
     model_class = dynamic_import(model_module)
     model = model_class(idim, odim, args)
+
+    torch_load(model_path, model)
+    logging.info(f'Pre-trained model is loaded.')
+    assert isinstance(model, MTInterface) or \
+        isinstance(model, ASRInterface) or \
+        isinstance(model, TTSInterface)
+
+    return model.state_dict(), False
+
+
+def get_trained_model_state_dict_multi(model_path):
+    """Extract the trained model state dict for pre-initialization.
+
+    Args:
+        model_path (str): Path to model.***.best
+
+    Return:
+        model.state_dict() (OrderedDict): the loaded model state_dict
+        (bool): Boolean defining whether the model is an LM
+
+    """
+    conf_path = os.path.join(os.path.dirname(model_path), 'model.json')
+    if 'rnnlm' in model_path:
+        logging.warning('reading model parameters from %s', model_path)
+
+        return torch.load(model_path), True
+
+    idim, odim_tgt, odim_src, args = get_model_conf(model_path, conf_path)
+
+    logging.warning('reading model parameters from ' + model_path)
+
+    if hasattr(args, "model_module"):
+        model_module = args.model_module
+    else:
+        model_module = "espnet.nets.pytorch_backend.e2e_asr:E2E"
+
+    logging.info(f'Loading pre-trained model...')
+    model_class = dynamic_import(model_module)
+    model = model_class(idim, odim_tgt, odim_src, args)
 
     torch_load(model_path, model)
     logging.info(f'Pre-trained model is loaded.')
@@ -359,7 +399,8 @@ def load_trained_modules_multi(idim, odim_tgt, odim_src, args, interface=ASRInte
 
     Args:
         idim (int): initial input dimension.
-        odim (int): initial output dimension.
+        odim_tgt (int): initial output dimension for target languages.
+        odim_src (int): initial output dimension for source language.
         args (Namespace): The initial model arguments.
         interface (Interface): ASRInterface or STInterface or TTSInterface.
 
@@ -385,7 +426,7 @@ def load_trained_modules_multi(idim, odim_tgt, odim_src, args, interface=ASRInte
                                 (dec_model_path, dec_modules)]:
         if model_path is not None:
             if os.path.isfile(model_path):
-                model_state_dict, is_lm = get_trained_model_state_dict(model_path)
+                model_state_dict, is_lm = get_trained_model_state_dict_multi(model_path)
 
                 if all(mod.startswith('dual_decoder') for mod in modules):
                     dual_modules = modules

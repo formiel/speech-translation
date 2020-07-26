@@ -151,7 +151,6 @@ class E2E(STInterface, torch.nn.Module):
         self.lang_tok = getattr(args, "lang_tok", None)
 
         self.normalize_before = getattr(args, "normalize_before", True)
-        logging.info(f'self.normalize_before = {self.normalize_before}')
 
         # Backward compatability
         if self.cross_operator in ["sum", "concat"]:
@@ -291,12 +290,7 @@ class E2E(STInterface, torch.nn.Module):
             self.error_calculator = None
         self.rnnlm = None
 
-        # multilingual E2E-ST related
-        self.multilingual = getattr(args, "multilingual", False)
-        self.replace_sos = getattr(args, "replace_sos", False)
-        if self.multilingual:
-            assert self.replace_sos
-
+        # Cross dual-decoder
         if self.lang_tok == "encoder-pre-sum":
             self.language_embeddings = build_embedding(self.langs_dict, self.idim, padding_idx=self.pad)
             logging.info(f'language_embeddings: {self.language_embeddings}')
@@ -334,7 +328,7 @@ class E2E(STInterface, torch.nn.Module):
         tgt_lang_ids, tgt_lang_ids_src = None, None
         if self.one_to_many:
             tgt_lang_ids = ys_pad[:, 0:1]
-            ys_pad = ys_pad[:, 1:] # remove target language ID in the beggining
+            ys_pad = ys_pad[:, 1:] # remove target language ID in the beginning
             
             if self.do_asr:
                 tgt_lang_ids_src = ys_pad_src[:, 0:1]
@@ -562,8 +556,7 @@ class E2E(STInterface, torch.nn.Module):
                 ctc_beam = lpz.shape[-1]
         hyps = [hyp]
         ended_hyps = []
-
-        
+       
         traced_decoder = None
         for i in six.moves.range(maxlen):
             logging.debug('position ' + str(i))
@@ -651,8 +644,7 @@ class E2E(STInterface, torch.nn.Module):
                 else:
                     remained_hyps.append(hyp)
 
-            # end detection
-            
+            # end detection            
             if end_detect(ended_hyps, i) and recog_args.maxlenratio == 0.0:
                 logging.info('end detected at %d', i)
                 break
@@ -812,8 +804,7 @@ class E2E(STInterface, torch.nn.Module):
                 else:
                     remained_hyps.append(hyp)
 
-            # end detection
-            
+            # end detection            
             if end_detect(ended_hyps, i) and trans_args.maxlenratio == 0.0:
                 logging.info('end detected at %d', i)
                 break
@@ -935,12 +926,17 @@ class E2E(STInterface, torch.nn.Module):
         
         return hyps, ended_hyps, stop_decoding
 
-    def recognize_and_translate_separate(self, x, trans_args, char_list=None, rnnlm=None, use_jit=False):
+    def recognize_and_translate_separate(self, x, trans_args, 
+                                        char_list_tgt=None,
+                                        char_list_src=None,
+                                        rnnlm=None,
+                                        use_jit=False):
         """Translate input speech.
 
         :param ndnarray x: input acoustic feature (B, T, D) or (T, D)
         :param Namespace trans_args: argment Namespace contraining options
-        :param list char_list: list of characters
+        :param list char_list_tgt: list of characters for target languages
+        :param list char_list_src: list of characters for source languages
         :param torch.nn.Module rnnlm: language model module
         :return: N-best decoding results
         :rtype: list
@@ -948,24 +944,23 @@ class E2E(STInterface, torch.nn.Module):
         # preprate sos
         if getattr(trans_args, "tgt_lang", False):
             if self.replace_sos:
-                y = char_list.index(trans_args.tgt_lang)
+                y = char_list_tgt.index(trans_args.tgt_lang)
         else:
             y = self.sos_tgt
 
         if self.one_to_many and self.lang_tok == 'decoder-pre':
             tgt_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[-1])
-            y = char_list.index(tgt_lang_id)
+            y = char_list_tgt.index(tgt_lang_id)
             logging.info(f'tgt_lang_id: {tgt_lang_id} - y: {y}')
 
             src_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[0])
-            y_asr = char_list.index(src_lang_id)
+            y_asr = char_list_src.index(src_lang_id)
             logging.info(f'src_lang_id: {src_lang_id} - y_asr: {y_asr}')
         else:
             y = self.sos_tgt
             y_asr = self.sos_src
-
-        logging.info(f'<sos> index: {str(y)}; <sos> mark: {char_list[y]}')
-        logging.info(f'<sos> index asr: {str(y_asr)}; <sos> mark asr: {char_list[y_asr]}')
+        logging.info(f'<sos> index: {str(y)}; <sos> mark: {char_list_tgt[y]}')
+        logging.info(f'<sos> index asr: {str(y_asr)}; <sos> mark asr: {char_list_src[y_asr]}')
 
         enc_output = self.encode(x).unsqueeze(0)
         h = enc_output.squeeze(0)
@@ -1005,7 +1000,6 @@ class E2E(STInterface, torch.nn.Module):
         stop_decoding_asr = False
         hyps_st_candidates = hyps
         hyps_asr_candidates = hyps_asr
-
         
         traced_decoder = None
         for i in six.moves.range(maxlen + self.wait_k_asr):
@@ -1015,27 +1009,52 @@ class E2E(STInterface, torch.nn.Module):
             # ASR SEARCH
             if i < maxlen and not stop_decoding_asr:
                 decoder_cross = self.decoder if self.cross_to_asr else None
-                hyps_asr = self.update_hypothesis(i, beam, hyps_asr, hyps_st_candidates,
-                            enc_output, self.eos_tgt, decoder=self.decoder_asr, decoder_cross=decoder_cross, wait_k_cross=self.wait_k_st)
-                hyps_asr, ended_hyps_asr, stop_decoding_asr = self.process_hypothesis(i, hyps_asr,
-                                    ended_hyps_asr, maxlen_asr, minlen_asr, trans_args, self.eos_src, rnnlm=rnnlm)
+                hyps_asr = self.update_hypothesis(i, beam, 
+                                                  hyps_asr, 
+                                                  hyps_st_candidates,
+                                                  enc_output, 
+                                                  self.eos_tgt, 
+                                                  decoder=self.decoder_asr, 
+                                                  decoder_cross=decoder_cross, 
+                                                  wait_k_cross=self.wait_k_st
+                                                  )
+                hyps_asr, ended_hyps_asr, stop_decoding_asr = self.process_hypothesis(i, 
+                                                                    hyps_asr,
+                                                                    ended_hyps_asr,
+                                                                    maxlen_asr,
+                                                                    minlen_asr,
+                                                                    trans_args,
+                                                                    self.eos_src,
+                                                                    rnnlm=rnnlm
+                                                                    )
                 hyps_asr_candidates = sorted(hyps_asr + ended_hyps_asr,
                                             key=lambda x: x['score'], reverse=True)[:beam_cross]
-                if char_list is not None:
+                if char_list_src is not None:
                     for hyp in hyps_asr:
-                        logging.info('hypo asr: ' + ''.join([char_list[int(x)] for x in hyp['yseq']]))
+                        logging.info('hypo asr: ' + ''.join([char_list_src[int(x)] for x in hyp['yseq']]))
             # ST SEARCH
             if i >= self.wait_k_asr and not stop_decoding_st:
                 decoder_cross = self.decoder_asr if self.cross_to_st else None
-                hyps = self.update_hypothesis(i - self.wait_k_asr, beam, hyps, hyps_asr_candidates,
-                          enc_output, self.eos_src, decoder=self.decoder, decoder_cross=decoder_cross, wait_k_cross=self.wait_k_asr)
-                hyps, ended_hyps, stop_decoding_st = self.process_hypothesis(i - self.wait_k_asr, hyps, ended_hyps,
-                                                maxlen, minlen, trans_args, self.eos_tgt, rnnlm=rnnlm)
+                hyps = self.update_hypothesis(i - self.wait_k_asr, beam, 
+                                              hyps, hyps_asr_candidates,
+                                              enc_output,
+                                              self.eos_src,
+                                              decoder=self.decoder,
+                                              decoder_cross=decoder_cross,
+                                              wait_k_cross=self.wait_k_asr
+                                              )
+                hyps, ended_hyps, stop_decoding_st = self.process_hypothesis(i - self.wait_k_asr, 
+                                                            hyps, ended_hyps,
+                                                            maxlen, minlen,
+                                                            trans_args,
+                                                            self.eos_tgt,
+                                                            rnnlm=rnnlm
+                                                            )
                 hyps_st_candidates = sorted(hyps + ended_hyps,
                                             key=lambda x: x['score'], reverse=True)[:beam_cross]
-                if char_list is not None:
+                if char_list_tgt is not None:
                     for hyp in hyps:
-                        logging.info('hypo: ' + ''.join([char_list[int(x)] for x in hyp['yseq']]))
+                        logging.info('hypo: ' + ''.join([char_list_tgt[int(x)] for x in hyp['yseq']]))
             
             # Stop decoding check
             if stop_decoding_asr and stop_decoding_st:
@@ -1044,12 +1063,12 @@ class E2E(STInterface, torch.nn.Module):
         nbest_hyps = sorted(
             ended_hyps, key=lambda x: x['score'], reverse=True)[:min(len(ended_hyps), trans_args.nbest)]
 
-        logging.info('best hypo: ' + ''.join([char_list[int(x)] for x in nbest_hyps[0]['yseq']]))
+        logging.info('best hypo: ' + ''.join([char_list_tgt[int(x)] for x in nbest_hyps[0]['yseq']]))
 
         nbest_hyps_asr = sorted(
             ended_hyps_asr, key=lambda x: x['score'], reverse=True)[:min(len(ended_hyps_asr), trans_args.nbest)]
 
-        logging.info('best hypo asr: ' + ''.join([char_list[int(x)] for x in nbest_hyps_asr[0]['yseq']]))
+        logging.info('best hypo asr: ' + ''.join([char_list_src[int(x)] for x in nbest_hyps_asr[0]['yseq']]))
 
         # check number of hypotheis
         if len(nbest_hyps) == 0 or len(nbest_hyps_asr) == 0:
@@ -1057,7 +1076,7 @@ class E2E(STInterface, torch.nn.Module):
             # should copy becasuse Namespace will be overwritten globally
             trans_args = Namespace(**vars(trans_args))
             trans_args.minlenratio = max(0.0, trans_args.minlenratio - 0.1)
-            return self.recognize_and_translate(x, trans_args, char_list, rnnlm, use_jit)
+            return self.recognize_and_translate(x, trans_args, char_list_tgt, char_list_src, rnnlm, use_jit)
 
         logging.info('total log probability: ' + str(nbest_hyps[0]['score']))
         logging.info('normalized log probability: ' + str(nbest_hyps[0]['score'] / len(nbest_hyps[0]['yseq'])))
@@ -1065,7 +1084,10 @@ class E2E(STInterface, torch.nn.Module):
         return nbest_hyps, nbest_hyps_asr
 
     def recognize_and_translate_sum(self, x, trans_args, 
-                                    char_list=None, rnnlm=None, use_jit=False, 
+                                    char_list_tgt=None,
+                                    char_list_src=None, 
+                                    rnnlm=None, 
+                                    use_jit=False, 
                                     decode_asr_weight=1.0, 
                                     score_is_prob=False, 
                                     ratio_diverse_st=0.0,
@@ -1093,24 +1115,24 @@ class E2E(STInterface, torch.nn.Module):
         # prepare sos
         if getattr(trans_args, "tgt_lang", False):
             if self.replace_sos:
-                y = char_list.index(trans_args.tgt_lang)
+                y = char_list_tgt.index(trans_args.tgt_lang)
         else:
             y = self.sos_tgt
 
         if self.one_to_many and self.lang_tok == 'decoder-pre':
             tgt_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[-1])
-            y = char_list.index(tgt_lang_id)
+            y = char_list_tgt.index(tgt_lang_id)
             logging.info(f'tgt_lang_id: {tgt_lang_id} - y: {y}')
 
             src_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[0])
-            y_asr = char_list.index(src_lang_id)
+            y_asr = char_list_src.index(src_lang_id)
             logging.info(f'src_lang_id: {src_lang_id} - y_asr: {y_asr}')
         else:
             y = self.sos_tgt
             y_asr = self.sos_src
         
-        logging.info(f'<sos> index: {str(y)}; <sos> mark: {char_list[y]}')
-        logging.info(f'<sos> index asr: {str(y_asr)}; <sos> mark asr: {char_list[y_asr]}')
+        logging.info(f'<sos> index: {str(y)}; <sos> mark: {char_list_tgt[y]}')
+        logging.info(f'<sos> index asr: {str(y_asr)}; <sos> mark asr: {char_list_src[y_asr]}')
 
         enc_output = self.encode(x).unsqueeze(0)
         h = enc_output.squeeze(0)
@@ -1326,9 +1348,9 @@ class E2E(STInterface, torch.nn.Module):
             hyps = hyps_best_kept
             logging.debug('number of pruned hypothes: ' + str(len(hyps)))
 
-            if char_list is not None:
-                logging.info('best hypo: ' + ''.join([char_list[int(x)] for x in hyps[0]['yseq']]))
-                logging.info('best hypo asr: ' + ''.join([char_list[int(x)] for x in hyps[0]['yseq_asr']]))
+            if char_list_tgt is not None and char_list_src is not None:
+                logging.info('best hypo: ' + ''.join([char_list_tgt[int(x)] for x in hyps[0]['yseq']]))
+                logging.info('best hypo asr: ' + ''.join([char_list_src[int(x)] for x in hyps[0]['yseq_asr']]))
 
             # add eos in the final loop to avoid that there are no ended hyps
             if i == maxlen - 1:
@@ -1371,10 +1393,10 @@ class E2E(STInterface, torch.nn.Module):
                 logging.info('no hypothesis. Finish decoding.')
                 break
 
-            if char_list is not None:
+            if char_list_tgt is not None and char_list_src is not None:
                 for hyp in hyps:
-                    logging.info('hypo: ' + ''.join([char_list[int(x)] for x in hyp['yseq'][1:]]))
-                    logging.info('hypo asr: ' + ''.join([char_list[int(x)] for x in hyp['yseq_asr'][1:]]))
+                    logging.info('hypo: ' + ''.join([char_list_tgt[int(x)] for x in hyp['yseq'][1:]]))
+                    logging.info('hypo asr: ' + ''.join([char_list_src[int(x)] for x in hyp['yseq_asr'][1:]]))
 
             logging.info('number of ended hypothes: ' + str(len(ended_hyps)))
 
@@ -1388,7 +1410,7 @@ class E2E(STInterface, torch.nn.Module):
             trans_args = Namespace(**vars(trans_args))
             trans_args.minlenratio = max(0.0, trans_args.minlenratio - 0.1)
             trans_args.minlenratio_asr = max(0.0, trans_args.minlenratio_asr - 0.1)
-            return self.recognize_and_translate_sum(x, trans_args, char_list, rnnlm)
+            return self.recognize_and_translate_sum(x, trans_args, char_list_tgt, char_list_src, rnnlm)
 
         logging.info('total log probability: ' + str(nbest_hyps[0]['score']))
         logging.info('normalized log probability: ' + str(nbest_hyps[0]['score'] / len(nbest_hyps[0]['yseq'])))

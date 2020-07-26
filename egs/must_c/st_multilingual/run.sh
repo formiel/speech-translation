@@ -102,6 +102,7 @@ echo "| language pairs: ${lang_pairs}"
 
 echo "*** Training-related parameters ***"
 echo "| nbpe: ${nbpe}"
+echo "| nbpe_src: ${nbpe_src}"
 echo "| dictionary prefix: ${dprefix}"
 echo "| dictionary suffix: ${suffix}"
 echo "| train_config: ${train_config}"

@@ -37,7 +37,9 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
         if False, no additional linear will be applied. i.e. x -> x + att(x)
     """
 
-    def __init__(self, odim,
+    def __init__(self, 
+                 odim_tgt,
+                 odim_src,
                  attention_dim=256,
                  attention_heads=4,
                  linear_units=2048,
@@ -62,23 +64,23 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
         torch.nn.Module.__init__(self)
         if input_layer == "embed":
             self.embed = torch.nn.Sequential(
-                torch.nn.Embedding(odim, attention_dim),
+                torch.nn.Embedding(odim_tgt, attention_dim),
                 pos_enc_class(attention_dim, positional_dropout_rate)
             )
             self.embed_asr = torch.nn.Sequential(
-                torch.nn.Embedding(odim, attention_dim),
+                torch.nn.Embedding(odim_src, attention_dim),
                 pos_enc_class(attention_dim, positional_dropout_rate)
             )
         elif input_layer == "linear":
             self.embed = torch.nn.Sequential(
-                torch.nn.Linear(odim, attention_dim),
+                torch.nn.Linear(odim_tgt, attention_dim),
                 torch.nn.LayerNorm(attention_dim),
                 torch.nn.Dropout(dropout_rate),
                 torch.nn.ReLU(),
                 pos_enc_class(attention_dim, positional_dropout_rate)
             )
             self.embed_asr = torch.nn.Sequential(
-                torch.nn.Linear(odim, attention_dim),
+                torch.nn.Linear(odim_src, attention_dim),
                 torch.nn.LayerNorm(attention_dim),
                 torch.nn.Dropout(dropout_rate),
                 torch.nn.ReLU(),
@@ -125,8 +127,8 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
             self.after_norm = LayerNorm(attention_dim)
             self.after_norm_asr = LayerNorm(attention_dim)
         if use_output_layer:
-            self.output_layer = torch.nn.Linear(attention_dim, odim)
-            self.output_layer_asr = torch.nn.Linear(attention_dim, odim)
+            self.output_layer = torch.nn.Linear(attention_dim, odim_tgt)
+            self.output_layer_asr = torch.nn.Linear(attention_dim, odim_src)
         else:
             self.output_layer = None
             self.output_layer_asr = None

@@ -448,6 +448,34 @@ def get_model_conf(model_path, conf_path=None):
         return idim, odim, argparse.Namespace(**args)
 
 
+def get_model_conf_multi(model_path, conf_path=None):
+    """Get model config information by reading a model config file (model.json).
+
+    Args:
+        model_path (str): Model path.
+        conf_path (str): Optional model config path.
+
+    Returns:
+        list[int, int, dict[str, Any]]: Config information loaded from json file.
+
+    """
+    if conf_path is None:
+        model_conf = os.path.dirname(model_path) + '/model.json'
+    else:
+        model_conf = conf_path
+    with open(model_conf, "rb") as f:
+        logging.info('reading a config file from ' + model_conf)
+        confs = json.load(f)
+    if isinstance(confs, dict):
+        # for lm
+        args = confs
+        return argparse.Namespace(**args)
+    else:
+        # for asr, tts, mt
+        idim, odim_tgt, odim_src, args = confs
+        return idim, odim_tgt, odim_src, argparse.Namespace(**args)
+
+
 def chainer_load(path, model):
     """Load chainer model parameters.
 

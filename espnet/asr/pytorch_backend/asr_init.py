@@ -6,7 +6,7 @@ import torch
 
 from collections import OrderedDict
 
-from espnet.asr.asr_utils import get_model_conf
+from espnet.asr.asr_utils import get_model_conf, get_model_conf_multi
 from espnet.asr.asr_utils import torch_load
 
 from espnet.nets.asr_interface import ASRInterface
@@ -222,7 +222,7 @@ def load_trained_model_multi(model_path):
         model_path (str): Path to model.***.best
 
     """
-    idim, odim_tgt, odim_src, train_args = get_model_conf(
+    idim, odim_tgt, odim_src, train_args = get_model_conf_multi(
         model_path, os.path.join(os.path.dirname(model_path), 'model.json'))
 
     logging.warning('reading model parameters from ' + model_path)

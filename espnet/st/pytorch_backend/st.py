@@ -386,7 +386,8 @@ def train(args):
         f.write(json.dumps((idim, odim_tgt, odim_src, vars(args)),
                            indent=4, ensure_ascii=False, sort_keys=True).encode('utf_8'))
     for key in sorted(vars(args).keys()):
-        logging.info('ARGS: ' + key + ': ' + str(vars(args)[key]))
+        if "char_list" not in key:
+            logging.info('ARGS: ' + key + ': ' + str(vars(args)[key]))
 
     reporter = model.reporter
 

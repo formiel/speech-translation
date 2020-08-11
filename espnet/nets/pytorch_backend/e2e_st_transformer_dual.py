@@ -637,7 +637,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                         new_hyp['yseq'][len(hyp['yseq'])] = int(local_best_ids_st[j])
                     else:
                         if i >= self.wait_k_asr:
-                            new_hyp['yseq'][len(hyp['yseq'])] = self.eos
+                            new_hyp['yseq'][len(hyp['yseq'])] = self.eos_tgt
                         else:
                             new_hyp['yseq'] = hyp['yseq'] # v3
                     
@@ -645,7 +645,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                         new_hyp['yseq_asr'][len(hyp['yseq_asr'])] = int(local_best_ids_asr[j])
                     else:
                         if i >= self.wait_k_st:
-                            new_hyp['yseq_asr'][len(hyp['yseq_asr'])] = self.eos
+                            new_hyp['yseq_asr'][len(hyp['yseq_asr'])] = self.eos_src
                         else:
                             new_hyp['yseq_asr'] = hyp['yseq_asr'] # v3
 

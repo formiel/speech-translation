@@ -326,13 +326,12 @@ class E2E(STInterface, torch.nn.Module):
         # 0. Extract target language ID
         # src_lang_ids = None
         tgt_lang_ids, tgt_lang_ids_src = None, None
-        if self.one_to_many:
-            tgt_lang_ids = ys_pad[:, 0:1]
-            ys_pad = ys_pad[:, 1:] # remove target language ID in the beginning
-            
-            if self.do_asr:
-                tgt_lang_ids_src = ys_pad_src[:, 0:1]
-                ys_pad_src = ys_pad_src[:, 1:]
+        tgt_lang_ids = ys_pad[:, 0:1]
+        ys_pad = ys_pad[:, 1:] # remove target language ID in the beginning
+        
+        if self.do_asr:
+            tgt_lang_ids_src = ys_pad_src[:, 0:1]
+            ys_pad_src = ys_pad_src[:, 1:]
 
         # 1. forward encoder
         xs_pad = xs_pad[:, :max(ilens)]  # for data parallel # bs x max_ilens x idim
@@ -650,7 +649,7 @@ class E2E(STInterface, torch.nn.Module):
                 break
 
             hyps = remained_hyps
-            logging.info(f'hyps remained: {hyps}')
+            logging.debug(f'hyps remained: {hyps}')
             if len(hyps) > 0:
                 logging.info('remained hypothes: ' + str(len(hyps)))
             else:
@@ -779,7 +778,7 @@ class E2E(STInterface, torch.nn.Module):
             hyps = hyps_best_kept
             logging.debug('number of pruned hypothes: ' + str(len(hyps)))
             if char_list is not None:
-                logging.debug(
+                logging.info(
                     'best hypo: ' + ''.join([char_list[int(x)] for x in hyps[0]['yseq'][1:]]))
 
             # add eos in the final loop to avoid that there are no ended hyps

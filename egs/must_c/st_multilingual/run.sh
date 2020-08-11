@@ -7,23 +7,25 @@
 . ./cmd.sh || exit 1;
 
 # general configuration
-backend=pytorch # chainer or pytorch
-stage=          # start from -1 if you need to start from data download
+backend=pytorch     # chainer or pytorch
+stage=              # start from -1 if you need to start from data download
 stop_stage=
-ngpu=           # number of gpus ("0" uses cpu, otherwise use gpu)
-nj=             # number of parallel jobs for decoding
+ngpu=               # number of gpus ("0" uses cpu, otherwise use gpu)
+nj=                 # number of parallel jobs for decoding
 debugmode=4
-dumpdir=dump    # directory to dump full features
-expdir=exp      # directory to save experiment folders
+dumpdir=dump        # directory to dump full features
+expdir=exp          # directory to save experiment folders
 tensorboard_dir=tensorboard
-datadir=        # directory where multilingual data folders are saved
-N=0             # number of minibatches to be used (mainly for debugging). 
-                # "0" uses all minibatches.
-verbose=1       # verbose option
-resume=         # Resume the training from snapshot
-seed=1          # seed to generate random number
+datadir=            # directory where multilingual data folders are saved
+train_config_dir=   # directory where training configs are saved
+decode_config_dir=  # directory where decode confis are saved
+N=0                 # number of minibatches to be used (mainly for debugging). 
+                    # "0" uses all minibatches.
+verbose=1           # verbose option
+resume=             # Resume the training from snapshot
+seed=1              # seed to generate random number
 mode=debug
-do_delta=false  # feature configuration
+do_delta=false      # feature configuration
 
 # Path to raw MuST-C data
 must_c=
@@ -52,13 +54,14 @@ nbpe=             # for target dictionary or joint source and target dictionary
 nbpe_src=         # for source dictionary only
 
 # decoding related
-decode_config=
+decode_config=    # configuration for decoding
 trans_model=      # set a model to be used for decoding e.g. 'model.acc.best'
-trans_set=
-max_iter_eval=    # get best model upto a specified iteration
+trans_set=        # data set to decode
+max_iter_eval=    # get best model up to this iteration
 
 # model average related (only for transformer)
-n_average=5                  # the number of ST models to be averaged
+n_average=1                  # the number of ST models to be averaged,
+                             # 1: disable model averaging and choose best model.
 use_valbest_average=true     # if true, use models with best validation.
                              # if false, use last `n_average` models.
 
@@ -86,7 +89,7 @@ else
 fi
 
 # training configuration
-train_config=./conf/training_after/${tag}.yaml
+train_config=${train_config_dir}/${tag}.yaml
 if [[ ${use_joint_src_tgt_dict} == "true" ]]; then
     dprefix="dict1"
 else
@@ -538,12 +541,16 @@ fi
 
 if [[ ${use_joint_src_tgt_dict} == "true" ]]; then
     dname=${train_set}_${bpemode}${nbpe}_${tgt_case}_${suffix}
-    dict_src=${datadir}/lang_1spm/${dname}.txt
     dict_tgt=${datadir}/lang_1spm/${dname}.txt
+    dict_src=${datadir}/lang_1spm/${dname}.txt
+    bpemodel_tgt=data/lang_1spm/use_${dprefix}/${dname}
+    bpemodel_src=data/lang_1spm/use_${dprefix}/${dname}
 else
     dname=${train_set}_${bpemode}_src${nbpe_src}${src_case}_tgt${nbpe}${tgt_case}_${suffix}
-    dict_src=${datadir}/lang_1spm/${dname}.src.txt
     dict_tgt=${datadir}/lang_1spm/${dname}.tgt.txt
+    dict_src=${datadir}/lang_1spm/${dname}.src.txt
+    bpemodel_tgt=data/lang_1spm/use_${dprefix}/${dname}.tgt
+    bpemodel_src=data/lang_1spm/use_${dprefix}/${dname}.src
 fi
 
 echo "*** Paths to training data and dictionary ***"
@@ -552,18 +559,25 @@ echo "| val_json_dir: ${val_json_dir}"
 echo "| source dictionary: ${dict_src}"
 echo "| target dictionary: ${dict_tgt}"
 
+# Find the latest snapshot (if it exists)
+resume_dir=$expdir/results
+exist_snaphots=false
+for i in $resume_dir/snapshot.iter.*; do test -f "$i" && exist_snaphots=true && break; done
+if [ "${exist_snaphots}" = true ]; then
+    ckpt_nums=$(ls $resume_dir | grep snapshot | sed 's/[^0-9]*//g' | sed 's/\n/" "/g')
+    last_ep=$(echo "${ckpt_nums[*]}" | sort -nr | head -n1)
+    resume=${resume_dir}/snapshot.iter.${last_ep}
+    echo "Last snapshot: snapshot.iter.${last_ep}"
+fi
+
 if [[ ${stage} -le 4 ]] && [[ ${stop_stage} -ge 4 ]]; then
     echo "***** stage 4: Network Training *****"
 
-    # Find the last snapshot to resume training
-    resume_dir=$expdir/results
-    exist_snaphots=false
-    for i in $resume_dir/snapshot.iter.*; do test -f "$i" && exist_snaphots=true && break; done
-    if [ "${exist_snaphots}" = true ]; then
-        ckpt_nums=$(ls $resume_dir | grep snapshot | sed 's/[^0-9]*//g' | sed 's/\n/" "/g')
-        last_ep=$(echo "${ckpt_nums[*]}" | sort -nr | head -n1)
-        echo "Resume training from last snapshot ${resume_dir}/snapshot.iter.${last_ep}"
-        resume=${resume_dir}/snapshot.iter.${last_ep}
+    # Resume training
+    if [[ -z ${resume} ]]; then
+        echo "Training from scratch!"
+    else
+        echo "Resume training from ${resume}"
     fi
 
     # Run training
@@ -598,16 +612,22 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
     if [[ $(get_yaml.py ${train_config} model-module) = *transformer* ]]; then
         # Average ST models
         if [[ -z ${trans_model} ]]; then
-            if [ ${max_iter_eval} > 0 -a ${max_iter_eval} -le ${last_ep} ]; then
-                # Get the model with best validation accuray up until that iter
-                trans_model=model.${max_iter_eval}.acc.best
-                opt="--log ${expdir}/results/log"
-            elif ${use_valbest_average}; then
-                trans_model=model.val${n_average}.avg.best
+            if [ ${max_iter_eval} -ge ${last_ep} ]; then
+                max_iter_eval=${last_ep}
+            fi
+
+            # model used to translate
+            if [ ${n_average} -eq 1 ]; then
+                trans_model=model.upto${max_iter_eval}.acc.best
                 opt="--log ${expdir}/results/log"
             else
-                trans_model=model.last${n_average}.avg.best
-                opt="--log"
+                if ${use_valbest_average}; then
+                    trans_model=model.upto${max_iter_eval}.val${n_average}.avg.best
+                    opt="--log ${expdir}/results/log"
+                else
+                    trans_model=model.upto${max_iter_eval}.last${n_average}.avg.best
+                    opt="--log"
+                fi
             fi
             echo "| trans_model: ${trans_model}"
 
@@ -621,7 +641,7 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
                     --out ${expdir}/results/${trans_model} \
                     --num ${n_average}        
             else
-                echo "trans_model existed: ${expdir}/results/${trans_model}"
+                echo "| trans_model ${expdir}/results/${trans_model} existed."
             fi
         fi
     fi
@@ -645,11 +665,11 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
         echo "| target language: ${lg_tgt}"
     
     (
-        decode_config_lg_pair=${decode_config}.${lg_pair}.yaml
-        decode_dir=decode_$(basename ${train_config%.*})_$(basename ${decode_config})_${split}_${lg_pair}_${trans_model}
+        decode_config_lg_pair=${decode_config_dir}/${decode_config}.${lg_pair}.yaml
+        decode_dir=decode_$(basename ${train_config%.*})_$(basename ${decode_config})_${split}_${trans_model}_${lg_pair}
         feat_trans_dir=${datadir}/${split}
-        echo "| decode_dir: ${decode_dir}"
-        echo "| feat_trans_dir: ${feat_trans_dir}"
+        echo "| decode_dir: ${decode_dir}"
+        echo "| feat_trans_dir: ${feat_trans_dir}"
 
         if [ ! -f "${feat_trans_dir}/split${nj}utt_${tgt_langs}/${lg_pair}.${nj}.json" ]; then
             # split data
@@ -679,9 +699,9 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
         # Compute BLEU
         if [[ ! -s "${expdir}/${decode_dir}/result.tc.txt" ]]; then
             echo "Compute BLEU..."
-            chmod +x local/score_bleu_st.sh
-            local/score_bleu_st.sh --case ${tgt_case} --bpe ${nbpe} --bpemodel ${bpemodel}.model \
-                ${expdir}/${decode_dir} ${lg_tgt} ${dict}
+            # chmod +x local/score_bleu_st.sh
+            local/score_bleu_st.sh --case ${tgt_case} --bpe ${nbpe} --bpemodel ${bpemodel_tgt}.model \
+                ${expdir}/${decode_dir} ${lg_tgt} ${dict_tgt}
         else
             echo "BLEU has been computed."
             cat ${expdir}/${decode_dir}/result.tc.txt
@@ -690,9 +710,9 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
         # Compute WER
         if [[ ! -s "${expdir}/${decode_dir}/result.wrd.wer.txt" ]]; then
             echo "Compute WER score..."
-            chmod +x local/score_sclite_st.sh
-            local/score_sclite_st.sh --case ${src_case} --bpe ${nbpe} --bpemodel ${bpemodel}.model --wer true \
-                ${expdir}/${decode_dir} ${dict}
+            # chmod +x local/score_sclite_st.sh
+            local/score_sclite_st.sh --case ${src_case} --bpe ${nbpe_src} --bpemodel ${bpemodel_src}.model --wer true \
+                ${expdir}/${decode_dir} ${dict_src}
         else
             echo "WER has been computed."
             cat ${expdir}/${decode_dir}/result.wrd.wer.txt
@@ -702,5 +722,5 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
     done
     i=0; for pid in "${pids[@]}"; do wait ${pid} || ((++i)); done
     [ ${i} -gt 0 ] && echo "$0: ${i} background jobs are failed." && false
-    echo "Finished."
+    echo "Finished decoding."
 fi

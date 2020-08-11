@@ -31,3 +31,7 @@ egs/must_c/st_multilingual/create_data*
 egs/must_c/st_multilingual/run-train.sh
 egs/must_c/st_multilingual/conf/training_after/*
 egs/must_c/st_multilingual/run-train-lig.sh
+egs/must_c/st_multilingual/create_histogram.py
+egs/must_c/st_multilingual/create_symlinks_tb.py
+egs/must_c/st_multilingual/conf/decoding_after/*
+egs/must_c/st_multilingual/run-decode.sh

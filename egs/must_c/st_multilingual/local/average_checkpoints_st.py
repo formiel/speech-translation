@@ -21,21 +21,23 @@ def main():
         if len(val_scores) == 0:
             raise ValueError("`validation/main/acc` or `val_perplexity` is not found in log.")
         val_scores = np.array(val_scores)
+        val_scores = val_scores[val_scores[:,0] <= args.max_iter_eval]
 
-        if args.max_iter_eval > 0:
-            val_scores = val_scores[val_scores[:,0] <= args.max_iter_eval]
+        if args.num == 1:
             idx_max = np.argmax(val_scores, axis=0)[-1]
             max_val_score = val_scores[idx_max]
             print(f"best val score up to iter {args.max_iter_eval}: {max_val_score[1]}")
             print(f"best val score reached at iter: {int(max_val_score[0])}")
             last = [os.path.join(os.path.dirname(args.snapshots[0]), f"snapshot.iter.{int(max_val_score[0])}")]
-        else:
+        elif args.num > 1:
             sort_idx = np.argsort(val_scores[:, -1])
             sorted_val_scores = val_scores[sort_idx][::-1]
             print("best val scores = " + str(sorted_val_scores[:args.num, 1]))
             print("selected iterations = " + str(sorted_val_scores[:args.num, 0].astype(np.int64)))
             last = [os.path.dirname(args.snapshots[0]) + "/snapshot.iter.%d" % (
                 int(epoch)) for epoch in sorted_val_scores[:args.num, 0]]
+        else:
+            raise NotImplementedError
     else:
         last = sorted(args.snapshots, key=os.path.getmtime)
         last = last[-args.num:]
@@ -46,7 +48,7 @@ def main():
         import torch
 
         if len(last) == 1:
-            print(f"Get the best validation model up to iter {args.max_iter_eval}")
+            print(f"Get the model with best val accuracy up to iter {args.max_iter_eval}")
             avg = torch.load(last[0], map_location=torch.device("cpu"))["model"]
 
         elif len(last) > 1:

@@ -113,6 +113,7 @@ class E2E(STInterface, torch.nn.Module):
         if args.transformer_attn_dropout_rate is None:
             args.transformer_attn_dropout_rate = args.dropout_rate
 
+        # special tokens and model dimensions
         self.pad = 0
         self.sos_tgt = odim_tgt - 1
         self.eos_tgt = odim_tgt - 1
@@ -123,8 +124,6 @@ class E2E(STInterface, torch.nn.Module):
         self.idim = idim
         self.adim = args.adim
         self.ignore_id = ignore_id
-        self.subsample = get_subsample(args, mode='st', arch='transformer')
-        self.reporter = Reporter()
 
         # submodule for ASR task
         self.mtlalpha = args.mtlalpha
@@ -153,6 +152,8 @@ class E2E(STInterface, torch.nn.Module):
             self.langs_dict = getattr(args, "langs_dict_tgt", None)
         self.lang_tok = getattr(args, "lang_tok", None)
 
+        self.subsample = get_subsample(args, mode='st', arch='transformer')
+        self.reporter = Reporter()
         self.normalize_before = getattr(args, "normalize_before", True)
 
         # Backward compatability
@@ -299,7 +300,7 @@ class E2E(STInterface, torch.nn.Module):
         self.criterion_asr = LabelSmoothingLoss(self.odim_src, self.ignore_id, args.lsm_weight,
                                             args.transformer_length_normalized_loss)
 
-        # Language embedding in encoder
+        # Language embedding layer
         if self.lang_tok == "encoder-pre-sum":
             self.language_embeddings = build_embedding(self.langs_dict, self.idim, padding_idx=self.pad)
             logging.info(f'language_embeddings: {self.language_embeddings}')
@@ -362,14 +363,13 @@ class E2E(STInterface, torch.nn.Module):
         if self.do_asr:
             ys_in_pad_src, ys_out_pad_src = add_sos_eos(ys_pad_src, self.sos_src, self.eos_src, self.ignore_id) # bs x max_lens_src
 
-        # replace <sos> with target language ID
+        # replace <sos> with target language IDs
         if self.lang_tok == "decoder-pre":
             ys_in_pad = torch.cat([tgt_lang_ids, ys_in_pad[:, 1:]], dim=1)
             if self.do_asr:
                 ys_in_pad_src = torch.cat([tgt_lang_ids_src, ys_in_pad_src[:, 1:]], dim=1)
 
         ys_mask = target_mask(ys_in_pad, self.ignore_id) # bs x max_lens x max_lens
-
         if self.do_asr:
             ys_mask_src = target_mask(ys_in_pad_src, self.ignore_id) # bs x max_lens_src x max_lens_src
 
@@ -1375,9 +1375,7 @@ class E2E(STInterface, torch.nn.Module):
             logging.debug('number of pruned hypothes: ' + str(len(hyps)))
 
             if char_list_tgt is not None and char_list_src is not None:
-                logging.info('best hypo token IDs: ' + ' '.join([str(int(x)) for x in hyps[0]['yseq']]))
                 logging.info('best hypo: ' + ''.join([char_list_tgt[int(x)] for x in hyps[0]['yseq']]))
-                logging.info('best hypo asr token IDs: ' + ' '.join([str(int(x)) for x in hyps[0]['yseq_asr']]))
                 logging.info('best hypo asr: ' + ''.join([char_list_src[int(x)] for x in hyps[0]['yseq_asr']]))
 
             # add eos in the final loop to avoid that there are no ended hyps

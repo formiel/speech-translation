@@ -113,6 +113,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         if args.transformer_attn_dropout_rate is None:
             args.transformer_attn_dropout_rate = args.dropout_rate
 
+        # special tokens and model dimensions
         self.pad = 0
         self.sos_tgt = odim_tgt - 1
         self.eos_tgt = odim_tgt - 1
@@ -123,8 +124,6 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         self.idim = idim
         self.adim = args.adim
         self.ignore_id = ignore_id
-        self.subsample = get_subsample(args, mode='st', arch='transformer')
-        self.reporter = Reporter()
 
         # submodule for ASR task
         self.mtlalpha = args.mtlalpha
@@ -152,6 +151,8 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
             self.langs_dict = getattr(args, "langs_dict_tgt", None)
         self.lang_tok = getattr(args, "lang_tok", None)
 
+        self.subsample = get_subsample(args, mode='st', arch='transformer')
+        self.reporter = Reporter()
         self.normalize_before = getattr(args, "normalize_before", True)
 
         # Check parameters
@@ -269,10 +270,10 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         self.criterion_asr = LabelSmoothingLoss(self.odim_src, self.ignore_id, args.lsm_weight,
                                             args.transformer_length_normalized_loss)
 
-        # Language embedding in encoder
+        # Language embedding layer
         if self.lang_tok == "encoder-pre-sum":
             self.language_embeddings = build_embedding(self.langs_dict, self.idim, padding_idx=self.pad)
-            print(f'language_embeddings: {self.language_embeddings}')
+            logging.info(f'language_embeddings: {self.language_embeddings}')
 
     def reset_parameters(self, args):
         """Initialize parameters."""

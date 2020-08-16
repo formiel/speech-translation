@@ -46,7 +46,7 @@ preprocess_config=
 # preprocessing related
 src_case=lc.rm              # lc.rm: lowercase with punctuation removal
 tgt_case=tc                 # tc: truecase
-use_joint_src_tgt_dict=     # if true, use one dictionary for source and target
+use_joint_dict=     # if true, use one dictionary for source and target
 
 # bpemode (unigram or bpe)
 bpemode=bpe
@@ -90,7 +90,7 @@ fi
 
 # training configuration
 train_config=${train_config_dir}/${tag}.yaml
-if [[ ${use_joint_src_tgt_dict} == "true" ]]; then
+if [[ ${use_joint_dict} == "true" ]]; then
     dprefix="dict1"
 else
     dprefix="dict2"
@@ -266,7 +266,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
     mkdir -p data/lang_1spm/use_${dprefix}
 
     # Create joint dictionary for both source and target languages
-    if [[ ${use_joint_src_tgt_dict} == "true" ]]; then
+    if [[ ${use_joint_dict} == "true" ]]; then
         echo "*** Create a JOINT dictionary for source and target languages ***"
         dict=${bpemodel}.txt
         nlsyms=${nlsyms}.txt
@@ -291,14 +291,16 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
         echo "*** Make a joint source and target dictionary ***"
         # echo "<unk> 1" > ${dict} # <unk> must be 1, 0 will be used for "blank" in CTC
         special_symbols="<unk> 1"
-        i=2
-        all_langs=$(echo "${tgt_langs}_en" | tr '_' ' ')
-        all_langs_sorted=$(echo ${all_langs[*]}| tr " " "\n" | sort -n | tr "\n" " ")
-        echo "all langs sorted: ${all_langs_sorted}"
-        for lang in $(echo "${all_langs_sorted}" | tr '_' ' '); do
-            special_symbols+="; <2${lang}> ${i}"
-            i=$((i + 1))
-        done
+        if (( $lang_count != 1 )); then
+            i=2
+            all_langs=$(echo "${tgt_langs}_en" | tr '_' ' ')
+            all_langs_sorted=$(echo ${all_langs[*]}| tr " " "\n" | sort -n | tr "\n" " ")
+            echo "all langs sorted: ${all_langs_sorted}"
+            for lang in $(echo "${all_langs_sorted}" | tr '_' ' '); do
+                special_symbols+="; <2${lang}> ${i}"
+                i=$((i + 1))
+            done
+        fi
         sed "s/; /\n/g" <<< ${special_symbols} > ${dict}
         echo "special symbols"
         cat ${dict}
@@ -395,13 +397,15 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
         # add more special symbols for later use
         # special_symbols="<unk> 1; <s> 2; </s> 3; <pad> 4; <TRANS> 5; <RECOG> 6; <DELAY> 7"
         special_symbols="<unk> 1"
-        i=2
-        tgt_langs_sorted=$(echo ${tgt_langs[*]}| tr " " "\n" | sort -n | tr "\n" " ")
-        echo "target langs sorted: ${tgt_langs_sorted}"
-        for lang in $(echo "${tgt_langs_sorted}" | tr '_' ' '); do
-            special_symbols+="; <2${lang}> ${i}"
-            i=$((i + 1))
-        done
+        if (( $lang_count != 1 )); then
+            i=2
+            tgt_langs_sorted=$(echo ${tgt_langs[*]}| tr " " "\n" | sort -n | tr "\n" " ")
+            echo "target langs sorted: ${tgt_langs_sorted}"
+            for lang in $(echo "${tgt_langs_sorted}" | tr '_' ' '); do
+                special_symbols+="; <2${lang}> ${i}"
+                i=$((i + 1))
+            done
+        fi
         sed "s/; /\n/g" <<< ${special_symbols} > ${dict_tgt}
         echo "special symbols"
         cat ${dict_tgt}
@@ -539,7 +543,7 @@ else
     val_json_dir=${datadir}/dev
 fi
 
-if [[ ${use_joint_src_tgt_dict} == "true" ]]; then
+if [[ ${use_joint_dict} == "true" ]]; then
     dname=${train_set}_${bpemode}${nbpe}_${tgt_case}_${suffix}
     dict_tgt=${datadir}/lang_1spm/${dname}.txt
     dict_src=${datadir}/lang_1spm/${dname}.txt
@@ -591,8 +595,8 @@ if [[ ${stage} -le 4 ]] && [[ ${stop_stage} -ge 4 ]]; then
         --outdir ${expdir}/results \
         --tensorboard-dir ${tensorboard_dir} \
         --debugmode ${debugmode} \
-        --dict_src ${dict_src} \
-        --dict_tgt ${dict_tgt} \
+        --dict-src ${dict_src} \
+        --dict-tgt ${dict_tgt} \
         --debugdir ${expdir} \
         --minibatches ${N} \
         --seed ${seed} \
@@ -612,20 +616,20 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
     if [[ $(get_yaml.py ${train_config} model-module) = *transformer* ]]; then
         # Average ST models
         if [[ -z ${trans_model} ]]; then
-            if [ ${max_iter_eval} -ge ${last_ep} ]; then
+            if (( ${max_iter_eval} >= ${last_ep} )); then
                 max_iter_eval=${last_ep}
             fi
 
             # model used to translate
-            if [ ${n_average} -eq 1 ]; then
-                trans_model=model.upto${max_iter_eval}.acc.best
+            if (( ${n_average} == 1 )); then
+                trans_model=model.acc.best.upto${max_iter_eval}
                 opt="--log ${expdir}/results/log"
             else
                 if ${use_valbest_average}; then
-                    trans_model=model.upto${max_iter_eval}.val${n_average}.avg.best
+                    trans_model=model.val${n_average}.avg.best.upto${max_iter_eval}
                     opt="--log ${expdir}/results/log"
                 else
-                    trans_model=model.upto${max_iter_eval}.last${n_average}.avg.best
+                    trans_model=model.last${n_average}.avg.best.upto${max_iter_eval}
                     opt="--log"
                 fi
             fi

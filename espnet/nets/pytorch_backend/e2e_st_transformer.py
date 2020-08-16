@@ -112,17 +112,19 @@ class E2E(STInterface, torch.nn.Module):
         torch.nn.Module.__init__(self)
         if args.transformer_attn_dropout_rate is None:
             args.transformer_attn_dropout_rate = args.dropout_rate
-        self.encoder = Encoder(
-            idim=idim,
-            attention_dim=args.adim,
-            attention_heads=args.aheads,
-            linear_units=args.eunits,
-            num_blocks=args.elayers,
-            input_layer=args.transformer_input_layer,
-            dropout_rate=args.dropout_rate,
-            positional_dropout_rate=args.dropout_rate,
-            attention_dropout_rate=args.transformer_attn_dropout_rate
-        )
+
+        self.pad = 0
+        self.sos_tgt = odim_tgt - 1
+        self.eos_tgt = odim_tgt - 1
+        self.sos_src = odim_src - 1
+        self.eos_src = odim_src - 1
+        self.odim_tgt = odim_tgt
+        self.odim_src = odim_src
+        self.idim = idim
+        self.adim = args.adim
+        self.ignore_id = ignore_id
+        self.subsample = get_subsample(args, mode='st', arch='transformer')
+        self.reporter = Reporter()
 
         # submodule for ASR task
         self.mtlalpha = args.mtlalpha
@@ -144,9 +146,10 @@ class E2E(STInterface, torch.nn.Module):
         self.cross_shared = getattr(args, "cross_shared", False)
         self.cross_weight_learnable = getattr(args, "cross_weight_learnable", False)
 
-        # one-to-many ST experiments
+        # one-to-many models parameters
+        self.use_joint_dict = getattr(args, "use_joint_dict", True)
         self.one_to_many = getattr(args, "one_to_many", False)
-        if getattr(args, "use_joint_src_tgt_dict", False):
+        if self.use_joint_dict:
             self.langs_dict = getattr(args, "langs_dict_tgt", None)
         self.lang_tok = getattr(args, "lang_tok", None)
 
@@ -196,11 +199,24 @@ class E2E(STInterface, torch.nn.Module):
                 logging.info(f'| Cross source from: {self.cross_src_from}')
             if self.cross_self:
                 logging.info(f'| Cross self from: {self.cross_self_from}')
+        logging.info(f"Use joint dictionary: {self.use_joint_dict}")
         
         if (self.cross_src_from != "embedding" and self.cross_src) and (not self.normalize_before):
             logging.warning(f'WARNING: Resort to using self.cross_src_from == embedding for cross at source attention.')
         if (self.cross_self_from != "embedding" and self.cross_self) and (not self.normalize_before):
             logging.warning(f'WARNING: Resort to using self.cross_self_from == embedding for cross at self attention.')
+
+        self.encoder = Encoder(
+            idim=idim,
+            attention_dim=args.adim,
+            attention_heads=args.aheads,
+            linear_units=args.eunits,
+            num_blocks=args.elayers,
+            input_layer=args.transformer_input_layer,
+            dropout_rate=args.dropout_rate,
+            positional_dropout_rate=args.dropout_rate,
+            attention_dropout_rate=args.transformer_attn_dropout_rate
+        )
 
         self.decoder = Decoder(
             odim=odim_tgt,
@@ -216,28 +232,9 @@ class E2E(STInterface, torch.nn.Module):
             cross_operator=self.cross_operator if self.cross_to_st else None,
             cross_shared=self.cross_shared,
             cross_weight_learnable=self.cross_weight_learnable,
-            cross_weight=self.cross_weight
+            cross_weight=self.cross_weight,
+            use_output_layer=True if self.use_joint_dict else False,
         )
-        self.pad = 0
-        self.sos_tgt = odim_tgt - 1
-        self.eos_tgt = odim_tgt - 1
-        self.sos_src = odim_src - 1
-        self.eos_src = odim_src - 1
-        self.odim_tgt = odim_tgt
-        self.odim_src = odim_src
-        self.idim = idim
-        self.ignore_id = ignore_id
-        self.subsample = get_subsample(args, mode='st', arch='transformer')
-        self.reporter = Reporter()
-
-        # self.lsm_weight = a
-        self.criterion_st = LabelSmoothingLoss(self.odim_tgt, self.ignore_id, args.lsm_weight,
-                                            args.transformer_length_normalized_loss)
-        self.criterion_asr = LabelSmoothingLoss(self.odim_src, self.ignore_id, args.lsm_weight,
-                                            args.transformer_length_normalized_loss)
-
-        # self.verbose = args.verbose
-        self.adim = args.adim
 
         if self.do_asr:
             logging.info('*** Do ASR ***')
@@ -255,11 +252,18 @@ class E2E(STInterface, torch.nn.Module):
                 cross_operator=self.cross_operator if self.cross_to_asr else None,
                 cross_shared=self.cross_shared,
                 cross_weight_learnable=self.cross_weight_learnable,
-                cross_weight=self.cross_weight
+                cross_weight=self.cross_weight,
+                use_output_layer=True if self.use_joint_dict else False,
             )
             if self.num_decoders == 1:
-                logging.info('*** Use 1 decoder *** ')
+                logging.info('*** Use one decoder *** ')
                 self.decoder_asr = self.decoder
+
+        if not self.use_joint_dict:
+            self.output_layer = torch.nn.Linear(args.adim, odim_tgt)
+            if self.do_asr:
+                self.output_layer_asr = torch.nn.Linear(args.adim, odim_src)
+
         # submodule for MT task
         self.mt_weight = getattr(args, "mt_weight", 0.0)
         if self.mt_weight > 0:
@@ -290,11 +294,17 @@ class E2E(STInterface, torch.nn.Module):
             self.error_calculator = None
         self.rnnlm = None
 
-        # Cross dual-decoder
+        self.criterion_st = LabelSmoothingLoss(self.odim_tgt, self.ignore_id, args.lsm_weight,
+                                            args.transformer_length_normalized_loss)
+        self.criterion_asr = LabelSmoothingLoss(self.odim_src, self.ignore_id, args.lsm_weight,
+                                            args.transformer_length_normalized_loss)
+
+        # Language embedding in encoder
         if self.lang_tok == "encoder-pre-sum":
             self.language_embeddings = build_embedding(self.langs_dict, self.idim, padding_idx=self.pad)
             logging.info(f'language_embeddings: {self.language_embeddings}')
 
+        # Backward compatability
         if self.cross_operator:
             if "sum" in self.cross_operator:
                 self.cross_operator = "sum"
@@ -326,12 +336,14 @@ class E2E(STInterface, torch.nn.Module):
         # 0. Extract target language ID
         # src_lang_ids = None
         tgt_lang_ids, tgt_lang_ids_src = None, None
-        tgt_lang_ids = ys_pad[:, 0:1]
-        ys_pad = ys_pad[:, 1:] # remove target language ID in the beginning
-        
-        if self.do_asr:
-            tgt_lang_ids_src = ys_pad_src[:, 0:1]
-            ys_pad_src = ys_pad_src[:, 1:]
+
+        if self.one_to_many:
+            tgt_lang_ids = ys_pad[:, 0:1]
+            ys_pad = ys_pad[:, 1:] # remove target language ID in the beginning
+            
+            if self.do_asr:
+                tgt_lang_ids_src = ys_pad_src[:, 0:1]
+                ys_pad_src = ys_pad_src[:, 1:]
 
         # 1. forward encoder
         xs_pad = xs_pad[:, :max(ilens)]  # for data parallel # bs x max_ilens x idim
@@ -378,6 +390,9 @@ class E2E(STInterface, torch.nn.Module):
         else:
             pred_pad, pred_mask = self.decoder(ys_in_pad, ys_mask, hs_pad, hs_mask)
 
+        if not self.use_joint_dict:
+            pred_pad = self.output_layer(pred_pad)
+
         self.pred_pad = pred_pad
         pred_pad_asr, pred_pad_mt = None, None
 
@@ -404,6 +419,10 @@ class E2E(STInterface, torch.nn.Module):
                                         cross_self=self.cross_self, cross_src=self.cross_src)
             else:
                 pred_pad_asr, _ = self.decoder_asr(ys_in_pad_src, ys_mask_src, hs_pad, hs_mask)
+
+            if not self.use_joint_dict:
+                pred_pad_asr = self.output_layer_asr(pred_pad_asr)
+
             # compute loss
             loss_asr = self.criterion_asr(pred_pad_asr, ys_out_pad_src)
         # Multi-task w/ MT
@@ -1212,6 +1231,10 @@ class E2E(STInterface, torch.nn.Module):
                                                                         cross_self=self.cross_self, cross_src=self.cross_src)[0]
                         else:
                             local_att_scores_asr = self.decoder_asr.forward_one_step(ys_asr, ys_mask_asr, enc_output)[0]
+
+                        # If using 2 separate dictionaries
+                        if not self.use_joint_dict:
+                            local_att_scores_asr = self.output_layer_asr(local_att_scores_asr)
                         if score_is_prob:
                             local_att_scores_asr = torch.exp(local_att_scores_asr)
                     else:
@@ -1229,6 +1252,10 @@ class E2E(STInterface, torch.nn.Module):
                                                                         cross_self=self.cross_self, cross_src=self.cross_src)[0]
                         else:
                             local_att_scores = self.decoder.forward_one_step(ys, ys_mask, enc_output)[0]
+
+                        # If using 2 separate dictionaries
+                        if not self.use_joint_dict:
+                            local_att_scores = self.output_layer(local_att_scores)
                         if score_is_prob:
                             local_att_scores = torch.exp(local_att_scores)
                     else:
@@ -1348,7 +1375,9 @@ class E2E(STInterface, torch.nn.Module):
             logging.debug('number of pruned hypothes: ' + str(len(hyps)))
 
             if char_list_tgt is not None and char_list_src is not None:
+                logging.info('best hypo token IDs: ' + ' '.join([str(int(x)) for x in hyps[0]['yseq']]))
                 logging.info('best hypo: ' + ''.join([char_list_tgt[int(x)] for x in hyps[0]['yseq']]))
+                logging.info('best hypo asr token IDs: ' + ' '.join([str(int(x)) for x in hyps[0]['yseq_asr']]))
                 logging.info('best hypo asr: ' + ''.join([char_list_src[int(x)] for x in hyps[0]['yseq_asr']]))
 
             # add eos in the final loop to avoid that there are no ended hyps

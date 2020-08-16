@@ -68,9 +68,9 @@ def get_parser(parser=None, required=True):
                         help='Debugmode')
     # parser.add_argument('--dict', required=required,
     #                     help='Dictionary')
-    parser.add_argument('--dict_src', required=required,
+    parser.add_argument('--dict-src', required=required,
                         help='Source dictionary')
-    parser.add_argument('--dict_tgt', required=required,
+    parser.add_argument('--dict-tgt', required=required,
                         help='Target dictionary')
     parser.add_argument('--seed', default=1, type=int,
                         help='Random seed')
@@ -217,14 +217,14 @@ def get_parser(parser=None, required=True):
     parser.add_argument('--replace-sos', default=False, type=strtobool,
                         help='Replace <sos> in the decoder with a target language ID \
                               (the first token in the target sequence)')
-    # Multilingual related: added by Hang Le
+    # One-to-many models related
     parser.add_argument('--lang-pairs', type=str,
                         help='Comma-seperated list of langage pairs for one-to-many system. For example: en-de,en-fr,en-nl')
     parser.add_argument('--lang-tok', choices=['encoder-pre-sum', 'decoder-pre'], default=None, type=str,
                         help='Language token added in the source')
     parser.add_argument('--num-decoders', choices=[1, 2], default=2, type=int,
                         help='Number of decoders in multilingual ST.')
-    # CROSS ATTENTION
+    # Dual attention related
     parser.add_argument('--cross-weight', default=0.0, type=float,
                         help='Weight decay ratio')
     parser.add_argument('--cross-weight-learnable', default=False, type=strtobool,
@@ -271,7 +271,7 @@ def get_parser(parser=None, required=True):
     parser.add_argument('--fbank-fmax', type=float, default=None,
                         help='')
     # Other param
-    parser.add_argument('--time-limit', type=float, default=20.0,
+    parser.add_argument('--time-limit', type=float, default=1000,
                         help='Time limit for each job in hours.')     
     return parser
 
@@ -360,8 +360,8 @@ def main(cmd_args):
     # load dictionary for debug log
     if args.dict_src is not None and args.dict_tgt is not None:
         if args.dict_src == args.dict_tgt:
-            logging.info('*** Use JOINT dictionary for source and target languages')
-            args.use_joint_src_tgt_dict = True
+            logging.info('*** Use JOINT dictionary ***')
+            args.use_joint_dict = True
             with open(args.dict_src, 'rb') as f:
                 dictionary = f.readlines()
             char_list = [entry.decode('utf-8').split(' ')[0]
@@ -371,8 +371,8 @@ def main(cmd_args):
             args.char_list_src = char_list
             args.char_list_tgt = char_list
         else:
-            logging.info('*** Use SEPARATE dictionaries for source and target languages')
-            args.use_joint_src_tgt_dict = False
+            logging.info('*** Use SEPARATE dictionaries ***')
+            args.use_joint_dict = False
             with open(args.dict_src, 'rb') as f:
                 dictionary = f.readlines()
             char_list = [entry.decode('utf-8').split(' ')[0]

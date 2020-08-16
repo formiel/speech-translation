@@ -112,17 +112,19 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         torch.nn.Module.__init__(self)
         if args.transformer_attn_dropout_rate is None:
             args.transformer_attn_dropout_rate = args.dropout_rate
-        self.encoder = Encoder(
-            idim=idim,
-            attention_dim=args.adim,
-            attention_heads=args.aheads,
-            linear_units=args.eunits,
-            num_blocks=args.elayers,
-            input_layer=args.transformer_input_layer,
-            dropout_rate=args.dropout_rate,
-            positional_dropout_rate=args.dropout_rate,
-            attention_dropout_rate=args.transformer_attn_dropout_rate
-        )
+
+        self.pad = 0
+        self.sos_tgt = odim_tgt - 1
+        self.eos_tgt = odim_tgt - 1
+        self.odim_tgt = odim_tgt
+        self.sos_src = odim_src - 1
+        self.eos_src = odim_src - 1
+        self.odim_src = odim_src
+        self.idim = idim
+        self.adim = args.adim
+        self.ignore_id = ignore_id
+        self.subsample = get_subsample(args, mode='st', arch='transformer')
+        self.reporter = Reporter()
 
         # submodule for ASR task
         self.mtlalpha = args.mtlalpha
@@ -144,12 +146,13 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         self.cross_weight_learnable = getattr(args, "cross_weight_learnable", False)
 
         # one-to-many ST experiments
+        self.use_joint_dict = getattr(args, "use_joint_dict", True)
         self.one_to_many = getattr(args, "one_to_many", False)
-        self.langs_dict = getattr(args, "langs_dict", None)
+        if self.use_joint_dict:
+            self.langs_dict = getattr(args, "langs_dict_tgt", None)
         self.lang_tok = getattr(args, "lang_tok", None)
 
         self.normalize_before = getattr(args, "normalize_before", True)
-        logging.info(f'self.normalize_before = {self.normalize_before}')
 
         # Check parameters
         if self.cross_operator == 'sum' and self.cross_weight <= 0:
@@ -168,7 +171,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
             assert self.wait_k_asr == 0
             assert self.wait_k_st == 0
 
-        logging.info("*** Cross attention parameters ***")
+        logging.info("*** Parallel attention parameters ***")
         if self.cross_to_asr:
             logging.info("| Cross to ASR")
         if self.cross_to_st:
@@ -191,6 +194,18 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
             logging.warning(f'WARNING: Resort to using self.cross_src_from == embedding for cross at source attention.')
         if (self.cross_self_from != "embedding" and self.cross_self) and (not self.normalize_before):
             logging.warning(f'WARNING: Resort to using self.cross_self_from == embedding for cross at self attention.')
+        
+        self.encoder = Encoder(
+            idim=idim,
+            attention_dim=args.adim,
+            attention_heads=args.aheads,
+            linear_units=args.eunits,
+            num_blocks=args.elayers,
+            input_layer=args.transformer_input_layer,
+            dropout_rate=args.dropout_rate,
+            positional_dropout_rate=args.dropout_rate,
+            attention_dropout_rate=args.transformer_attn_dropout_rate
+        )
 
         self.dual_decoder = DualDecoder(
                 odim_tgt,
@@ -210,28 +225,14 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                 cross_self=self.cross_self,
                 cross_src=self.cross_src,
                 cross_to_asr=self.cross_to_asr,
-                cross_to_st=self.cross_to_st
+                cross_to_st=self.cross_to_st,
+                use_output_layer=True if self.use_joint_dict else False
         )
 
-        self.pad = 0
-        self.sos_tgt = odim_tgt - 1
-        self.eos_tgt = odim_tgt - 1
-        self.odim_tgt = odim_tgt
-        self.sos_src = odim_src - 1
-        self.eos_src = odim_src - 1
-        self.odim_src = odim_src
-        self.idim = idim
-        self.ignore_id = ignore_id
-        self.subsample = get_subsample(args, mode='st', arch='transformer')
-        self.reporter = Reporter()
-
-        # self.lsm_weight = a
-        self.criterion_st = LabelSmoothingLoss(self.odim_tgt, self.ignore_id, args.lsm_weight,
-                                            args.transformer_length_normalized_loss)
-        self.criterion_asr = LabelSmoothingLoss(self.odim_src, self.ignore_id, args.lsm_weight,
-                                            args.transformer_length_normalized_loss)
-        # self.verbose = args.verbose
-        self.adim = args.adim
+        if not self.use_joint_dict:
+            self.output_layer = torch.nn.Linear(args.adim, odim_tgt)
+            if self.do_asr:
+                self.output_layer_asr = torch.nn.Linear(args.adim, odim_src)
         
         # submodule for MT task
         self.mt_weight = getattr(args, "mt_weight", 0.0)
@@ -263,6 +264,12 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
             self.error_calculator = None
         self.rnnlm = None
 
+        self.criterion_st = LabelSmoothingLoss(self.odim_tgt, self.ignore_id, args.lsm_weight,
+                                            args.transformer_length_normalized_loss)
+        self.criterion_asr = LabelSmoothingLoss(self.odim_src, self.ignore_id, args.lsm_weight,
+                                            args.transformer_length_normalized_loss)
+
+        # Language embedding in encoder
         if self.lang_tok == "encoder-pre-sum":
             self.language_embeddings = build_embedding(self.langs_dict, self.idim, padding_idx=self.pad)
             print(f'language_embeddings: {self.language_embeddings}')
@@ -342,6 +349,9 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                                                                                 cross_self=self.cross_self, cross_src=self.cross_src,
                                                                                 cross_self_from=self.cross_self_from,
                                                                                 cross_src_from=self.cross_src_from)
+        if not self.use_joint_dict:
+            pred_pad = self.output_layer(pred_pad)
+            pred_pad_asr = self.output_layer_asr(pred_pad_asr)
 
         self.pred_pad = pred_pad
         self.pred_pad_asr = pred_pad_asr
@@ -550,6 +560,11 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                                                                                                           cross_self=self.cross_self, cross_src=self.cross_src,
                                                                                                           cross_self_from=self.cross_self_from,
                                                                                                           cross_src_from=self.cross_src_from)
+                        # If using 2 separate dictionaries
+                        if not self.use_joint_dict:
+                            local_att_scores_asr = self.output_layer_asr(local_att_scores_asr)
+                            local_att_scores = self.output_layer(local_att_scores)
+
                     if (hyp['yseq'][-1] == self.eos_tgt and i > 2) or i < self.wait_k_asr:
                         local_att_scores = None
                     if (hyp['yseq_asr'][-1] == self.eos_src and i > 2) or i < self.wait_k_st:

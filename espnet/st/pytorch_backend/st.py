@@ -305,29 +305,33 @@ def train(args):
     else:
         train_jpaths = [args.train_json]
         valid_jpaths = [args.valid_json]
-
-    logging.info(f'| use_joint_src_tgt_dict = {args.use_joint_src_tgt_dict}')
-    if args.use_joint_src_tgt_dict:
-        all_langs = list(sorted(set([l for p in lang_pairs for l in p.split('-')])))
-        langs_dict = {}
-        offset = 2 # for <blank> and <unk>
-        for i, lang in enumerate(all_langs):
-            langs_dict[f'<2{lang}>'] = offset + i
-        args.langs_dict_tgt = langs_dict
-        args.langs_dict_src = langs_dict
-    else:
-        langs_dict_tgt = {}
-        langs_dict_src = {}
-        offset = 2 # for <blank> and <unk>
-        for i, lang in enumerate(tgt_langs):
-            langs_dict_tgt[f'<2{lang}>'] = offset + i
-        langs_dict_src[f'<2{src_lang}>'] = offset
-        args.langs_dict_tgt = langs_dict_tgt
-        args.langs_dict_src = langs_dict_src
-
     logging.info(f'| train_jpaths: {train_jpaths}')
     logging.info(f'| valid_jpaths: {valid_jpaths}')
     logging.info(f'| lang_pairs  : {lang_pairs}')
+    logging.info(f'| use_joint_dict = {args.use_joint_dict}')
+
+    # Prepare language ID tokens for one-to-many systems 
+    if args.one_to_many:
+        if args.use_joint_dict:
+            all_langs = list(sorted(set([l for p in lang_pairs for l in p.split('-')])))
+            langs_dict = {}
+            offset = 2 # for <blank> and <unk>
+            for i, lang in enumerate(all_langs):
+                langs_dict[f'<2{lang}>'] = offset + i
+            args.langs_dict_tgt = langs_dict
+            args.langs_dict_src = langs_dict
+        else:
+            langs_dict_tgt = {}
+            langs_dict_src = {}
+            offset = 2 # for <blank> and <unk>
+            for i, lang in enumerate(tgt_langs):
+                langs_dict_tgt[f'<2{lang}>'] = offset + i
+            langs_dict_src[f'<2{src_lang}>'] = offset
+            args.langs_dict_tgt = langs_dict_tgt
+            args.langs_dict_src = langs_dict_src
+    else:
+        args.langs_dict_tgt = None
+        args.langs_dict_src = None
     logging.info(f'| langs_dict_tgt : {args.langs_dict_tgt}')
     logging.info(f'| langs_dict_src : {args.langs_dict_src}')
 

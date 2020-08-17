@@ -2,11 +2,13 @@
 
 This is our fork of ESPNet. Code for multilingual speech translation can be found in `egs/must_c/st_multilingual`.
 
-<!-- # Table of Contents
+# Table of Contents
 
-1. [Install necessary packages](#1.-install-necessary-packages) -->
-<!-- 2. [Train multilingual models](#2.-train-multilingual-models)
-3. [Decode multilingual models](#3.-decode-multilingual-models) -->
+1. [Dependencies](#1.-dependencies)
+2. [Train models](#2.-train-models)   
+    2.1. [Download necessary files](#2.1.-download-necessary-files)     
+    2.2. [Prepare data for training](#2.2.-prepare-data-for-training)   
+    2.3. [Launch training](#2.3.-launch-training)
 
 
 ## 1. Dependencies
@@ -81,10 +83,19 @@ pip install --user . && pip install --user -e .
 ```
 
 
-## 2. Instructions on training new models or resuming checkpoints
+## 2. Train models
+**Please go through all the steps in Section 2.1 and 2.2 below again to update existing data folder with newly downloaded files**.
 
 ### 2.1. Download necessary files
-All of the neccessary files can be downloaded from [here](). The folders `data`, `dump`, and `exp` should be placed under `egs/must_c/st_multilingual` as follows.
+
+**NOTE**: To update `data` and `dump` folders with newly downloaded files, please run the following command.
+
+```bash
+rsync -chavzP --stats ${DOWNLOAD_DIR}/* speech-translation/egs/must_c/st_multilingual/
+```
+where `${DOWNLOAD_DIR}` is the folder saving downloaded files.
+
+The folders `data`, `dump`, and `exp` should be placed under `egs/must_c/st_multilingual` as follows.
 ```
 speech-translation
 └──egs   
@@ -96,6 +107,8 @@ speech-translation
             |           config2.yaml
             └───data
             |   └───lang_1spm
+            |       └───use_dict1
+            |       └───use_dict2
             | 
             └───dump
             |   └───train_sp.en-de.de
@@ -126,17 +139,21 @@ speech-translation
                 └───...
 ```
 
-#### a. Feature files
-The features are saved in the `dump` folder. After saving this folder under `egs/must_c/st_multilingual`, please run the 2 steps below to prepare the data for training.
+### 2.2. Prepare data for training
 
-1. Mofidy the *hard-coded* feature paths in the json files
+<!-- #### a. Feature files -->
+**NOTE**: Please run the following commands again to update the local paths to features in `json` files.
+
+<!-- The features are saved in `dump`. After saving this folder under `egs/must_c/st_multilingual`, please run the 2 steps below to prepare the data for training. -->
+
+- Mofidy the *hard-coded* feature paths in the json files
 ```bash
 cd speech-translation/egs/must_c/st_multilingual
 
 python modify_fpath.py --input-dir ./dump
 ```
 
-2. Create symlinks so that the data is saved in the required strutured for training
+- Create symlinks so that the data is saved in the required strutured for training
 ```bash
 python create_symlinks.py --output-dir ${DATA_DIR}
 ``` 
@@ -161,25 +178,30 @@ ${DATA_DIR}
         └──en-es.json
         └──...
     └──lang_1spm
-            train_sp.en-${tgt_langs}.${tgt_langs}_bpe8000_units_tc_${suffix}.txt
-
+        └──use_dict1
+        |   └───src8000_tgt8000
+        |   └───src32000_tgt32000
+        └───use_dict2
+            └───src8000_tgt8000
+            └───src8000_tgt32000
+            └───src32000_tgt32000
 ```
 In which, `${tgt_langs}` is the target languages separated by `_`. For example, for a model trained on 8 languages, `${tgt_langs}` is `de_es_fr_it_nl_pt_ro_ru`.
 
-#### b. Dictionary files
+<!-- #### b. Dictionary files
 Learned dictionaries are included in the folder `data/lang_1spm`.
 
 #### c. Pre-trained weights
 The pre-trained weights is saved in the folder `pre_trained_weights`.
 
 #### d. Trained models
-The trained models are saved in the folder `exp`.
+The trained models are saved in the folder `exp`. -->
 
-### 2.2. List of configurations needed to be trained
-The configurations needed to be trained for longer epochs are saved in `egs/must_c/st_multilingual/conf/training` in this repo.
+<!-- ### 2.2. List of configurations needed to be trained
+The configurations needed to be trained for longer epochs are saved in `egs/must_c/st_multilingual/conf/training` in this repo. -->
 
-### 2.3. Train or Resume training
-Please run the following command to train or resume training. **The training will be automatically resumed from the last checkpoints in the `exp/${config}/results` folder if this folder exists (and there are checkpoints of the format `snapshot.iter.${NUM_ITER}` in it), where `${config}` is the name tag of the experiment and `${NUM_ITER}` is the iteration number. If `exp/${config}/results` folder does not exist, the model will be trained from scratch (the weights is initialized using the pre-trained weights provided)**. 
+### 2.3. Launch training
+Please run the following command to train models. The training will be automatically resumed from the last checkpoints in the `exp/${config}/results` folder if this folder exists (and there are checkpoints of the format `snapshot.iter.${NUM_ITER}` in it), where `${config}` is the name tag of the experiment and `${NUM_ITER}` is the iteration number. If `exp/${config}/results` folder does not exist, the model will be trained from scratch (the weights is initialized using the pre-trained weights provided). 
 
 ```bash
 bash run.sh --stage 4 --stop-stage 4 --ngpu 8 \

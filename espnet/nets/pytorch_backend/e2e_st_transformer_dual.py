@@ -492,7 +492,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         h = enc_output.squeeze(0)
         logging.info('input lengths: ' + str(h.size(0)))
 
-        # search parms
+        # search params
         beam = trans_args.beam_size
         penalty = trans_args.penalty
 

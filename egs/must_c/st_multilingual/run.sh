@@ -670,13 +670,13 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
     
     (
         decode_config_lg_pair=${decode_config_dir}/${decode_config}.${lg_pair}.yaml
-        decode_dir=decode_$(basename ${train_config%.*})_$(basename ${decode_config})_${split}_${trans_model}_${lg_pair}
+        decode_dir=decode_$(basename ${train_config%.*})_$(basename ${decode_config})_${split}_${lg_pair}_${trans_model}
         feat_trans_dir=${datadir}/${split}
         echo "| decode_dir: ${decode_dir}"
         echo "| feat_trans_dir: ${feat_trans_dir}"
 
+        # split data
         if [ ! -f "${feat_trans_dir}/split${nj}utt_${tgt_langs}/${lg_pair}.${nj}.json" ]; then
-            # split data
             splitjson.py --parts ${nj} --tgt_lang ${tgt_langs} ${feat_trans_dir}/${lg_pair}.json
             echo "Finished splitting json file."
         else
@@ -703,9 +703,9 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
         # Compute BLEU
         if [[ ! -s "${expdir}/${decode_dir}/result.tc.txt" ]]; then
             echo "Compute BLEU..."
-            # chmod +x local/score_bleu_st.sh
+            chmod +x local/score_bleu_st.sh
             local/score_bleu_st.sh --case ${tgt_case} --bpe ${nbpe} --bpemodel ${bpemodel_tgt}.model \
-                ${expdir}/${decode_dir} ${lg_tgt} ${dict_tgt}
+                ${expdir}/${decode_dir} ${lg_tgt} ${dict_tgt} ${dict_src}
         else
             echo "BLEU has been computed."
             cat ${expdir}/${decode_dir}/result.tc.txt

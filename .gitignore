@@ -35,3 +35,5 @@ egs/must_c/st_multilingual/create_histogram.py
 egs/must_c/st_multilingual/create_symlinks_tb.py
 egs/must_c/st_multilingual/conf/decoding_after/*
 egs/must_c/st_multilingual/run-decode.sh
+egs/must_c/st_multilingual/run-tmp.sh
+egs/must_c/st_multilingual/run-decode-tmp.sh

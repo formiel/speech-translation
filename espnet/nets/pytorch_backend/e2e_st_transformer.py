@@ -1260,9 +1260,6 @@ class E2E(STInterface, torch.nn.Module):
                             local_att_scores = torch.exp(local_att_scores)
                     else:
                         local_att_scores = None
-                
-                if debug:
-                    logging.info(f'forward time = {time.time() - start}')
 
                 start = time.time()
                 if local_att_scores is not None and local_att_scores_asr is not None:
@@ -1364,19 +1361,11 @@ class E2E(STInterface, torch.nn.Module):
 
                     hyps_best_kept.append(new_hyp)
 
-                    hyps_best_kept = sorted(
-                        hyps_best_kept, key=lambda x: x['score'], reverse=True)[:beam]
-                
-                if debug:
-                    logging.info(f'update time = {time.time() - start}')
+            hyps_best_kept = sorted(hyps_best_kept, key=lambda x: x['score'], reverse=True)[:beam]  
 
             # sort and get nbest
             hyps = hyps_best_kept
             logging.debug('number of pruned hypothes: ' + str(len(hyps)))
-
-            if char_list_tgt is not None and char_list_src is not None:
-                logging.info('best hypo: ' + ''.join([char_list_tgt[int(x)] for x in hyps[0]['yseq']]))
-                logging.info('best hypo asr: ' + ''.join([char_list_src[int(x)] for x in hyps[0]['yseq_asr']]))
 
             # add eos in the final loop to avoid that there are no ended hyps
             if i == maxlen - 1:
@@ -1421,9 +1410,10 @@ class E2E(STInterface, torch.nn.Module):
 
             if char_list_tgt is not None and char_list_src is not None:
                 for hyp in hyps:
-                    logging.info('hypo: ' + ''.join([char_list_tgt[int(x)] for x in hyp['yseq'][1:]]))
-                    logging.info('hypo asr: ' + ''.join([char_list_src[int(x)] for x in hyp['yseq_asr'][1:]]))
-
+                    logging.info('hypo: ' + ''.join([char_list_tgt[int(x)] for x in hyp['yseq']]))
+                    logging.info('hypo asr: ' + ''.join([char_list_src[int(x)] for x in hyp['yseq_asr']]))
+                logging.info('best hypo: ' + ''.join([char_list_tgt[int(x)] for x in hyps[0]['yseq']]))
+                logging.info('best hypo asr: ' + ''.join([char_list_src[int(x)] for x in hyps[0]['yseq_asr']]))
             logging.info('number of ended hypothes: ' + str(len(ended_hyps)))
 
         nbest_hyps = sorted(

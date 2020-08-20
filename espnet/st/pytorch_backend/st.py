@@ -762,7 +762,7 @@ def trans(args):
                 logging.info('| (%d/%d) decoding ' + name, idx, len(js.keys()))
                 batch = [(name, js[name])]
                 feat = load_inputs_and_targets(batch)[0][0]
-                if args.recog_and_trans:    # for cross
+                if args.recog_and_trans:    # for dual decoders
                     logging.info('***** Dual decoders: Recognize and Translate simultaneously ******')
                     if args.beam_search_type == 'sum':
                         logging.info('=== Beam search by sum of scores ===')

@@ -587,7 +587,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                         local_best_ids_asr = I[:,1]
 
                     # Force diversity for ST only
-                    if ratio_diverse_st > 0 and ratio_diverse_asr <= 0:
+                    elif ratio_diverse_st > 0 and ratio_diverse_asr <= 0:
                         ct = int((1 - ratio_diverse_st) * beam)
                         # logging.info(f'ct = {ct}')
                         s2v = s2v.reshape(beam, beam, 2)
@@ -600,7 +600,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                         local_best_ids_asr = I[:,1]
 
                     # Force diversity for ASR only
-                    if ratio_diverse_asr > 0 and ratio_diverse_st <= 0:
+                    elif ratio_diverse_asr > 0 and ratio_diverse_st <= 0:
                         cr = int((1 - ratio_diverse_asr) * beam)
                         # logging.info(f'cr = {cr}')
                         s2v = s2v.reshape(beam, beam, 2)
@@ -617,8 +617,6 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                         cr = int((1 - ratio_diverse_asr) * beam) 
                         ct = int((1 - ratio_diverse_st) * beam)
                         ct = max(ct, math.ceil(beam // cr))
-                        # logging.info(f'cr = {cr}')
-                        # logging.info(f'ct = {ct}')
                                     
                         s2v = s2v.reshape(beam, beam, 2)
                         Sc = S[:cr, :ct]
@@ -668,7 +666,22 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                     hyps_best_kept.append(new_hyp)
 
             hyps_best_kept = sorted(hyps_best_kept, key=lambda x: x['score'], reverse=True)[:beam]
-            logging.info(f'len(hyps_best_kept) = {len(hyps_best_kept)}')
+
+            # if ratio_diverse_st <= 0 and ratio_diverse_asr <=0:
+            #     hyps_best_kept = sorted(hyps_best_kept, key=lambda x: x['score'], reverse=True)[:beam]
+            # elif ratio_diverse_asr > 0 and ratio_diverse_st <= 0:
+            #     hyps_best_kept = sorted(hyps_best_kept, key=lambda x: x['score'], reverse=True)
+            #     hyps_best_kept_tmp = []
+            #     last_tokens = dict.fromkeys(set([h['yseq_asr'][-1] for h in hyps_best_kept]), 0)
+            #     count = 0
+            #     for ii, hyps in enumerate(hyps_best_kept):
+            #         if last_tokens[hyps['yseq_asr'][-1]] < cr:
+            #             hyps_best_kept_tmp.append(hyps)
+            #             last_tokens[hyps['yseq_asr'][-1]] += 1
+            #             count += 1
+            #             if count == beam:
+            #                 break
+            #     hyps_best_kept = hyps_best_kept_tmp
 
             # sort and get nbest
             hyps = hyps_best_kept

@@ -37,3 +37,4 @@ egs/must_c/st_multilingual/conf/decoding_after/*
 egs/must_c/st_multilingual/run-decode.sh
 egs/must_c/st_multilingual/run-tmp.sh
 egs/must_c/st_multilingual/run-decode-tmp.sh
+egs/must_c/st_multilingual/run-decode2.sh

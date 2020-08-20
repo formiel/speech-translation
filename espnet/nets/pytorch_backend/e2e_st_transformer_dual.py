@@ -753,6 +753,251 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
 
         return nbest_hyps
 
+    def update_hypothesis(self, i, beam, hyps, hyps_cross_candidates,
+                          enc_output, decoder, eos_cross, decoder_cross=None, wait_k_cross=0):
+        hyps_best_kept = []
+        # For each ST hypothesis, we use the best ASR candidates as cross information
+        for hyp in hyps:
+            # get nbest local scores and their ids
+            ys_mask = subsequent_mask(i + 1).unsqueeze(0)
+            ys = torch.tensor(hyp['yseq']).unsqueeze(0)
+            # FIXME: jit does not match non-jit result
+            
+            if decoder_cross is not None:
+                all_scores = []
+                for hyp_cross in hyps_cross_candidates:
+                    if len(hyp_cross) > 2:
+                        if hyp_cross[-1] == eos_cross and hyp_cross[-2] == eos_cross:
+                            hyp_cross.append(eos_cross)
+                    ys_cross = torch.tensor(hyp_cross['yseq']).unsqueeze(0)
+                    y_cross = decoder_cross.embed(ys_cross)
+                    if (self.cross_self_from == "before-self" and self.cross_self) or \
+                        (self.cross_src_from == "before-self" and self.cross_src):
+                        y_cross = decoder_cross.decoders[0].norm1(y_cross)
+                    cross_mask = create_cross_mask(ys, ys_cross, self.ignore_id, wait_k_cross=wait_k_cross)
+                    local_att_scores = decoder.forward_one_step(ys, ys_mask, enc_output, 
+                                                                cross=y_cross, cross_mask=cross_mask,
+                                                                cross_self=self.cross_self, cross_src=self.cross_src)[0]
+                    V = local_att_scores.shape[-1]
+                    all_scores.append(local_att_scores)
+                local_scores = torch.cat(all_scores, dim=-1)
+                local_best_scores, local_best_ids = torch.topk(local_scores, beam, dim=1)
+                local_best_ids = local_best_ids % V
+            else:
+                local_scores = decoder.forward_one_step(ys, ys_mask, enc_output)[0]
+                local_best_scores, local_best_ids = torch.topk(local_scores, beam, dim=1)
+
+            for j in six.moves.range(beam):
+                new_hyp = {}
+                new_hyp['score'] = hyp['score'] + float(local_best_scores[0, j])
+                new_hyp['yseq'] = [0] * (1 + len(hyp['yseq']))
+                new_hyp['yseq'][:len(hyp['yseq'])] = hyp['yseq']
+                new_hyp['yseq'][len(hyp['yseq'])] = int(local_best_ids[0, j])
+                # will be (2 x beam) hyps at most
+                hyps_best_kept.append(new_hyp)
+
+            hyps_best_kept = sorted(
+                hyps_best_kept, key=lambda x: x['score'], reverse=True)[:beam]
+
+        return hyps_best_kept
+
+    def process_hypothesis(self, i, hyps, ended_hyps, maxlen, minlen, trans_args, eos, rnnlm=None):
+
+        stop_decoding = False
+
+        # add eos in the final loop to avoid that there are no ended hyps
+        if i == maxlen - 1:
+            logging.info('adding <eos> in the last postion in the loop')
+            for hyp in hyps:
+                hyp['yseq'].append(eos)
+
+        # add ended hypothes to a final list, and removed them from current hypothes
+        # (this will be a probmlem, number of hyps < beam)
+        remained_hyps = []
+        for hyp in hyps:
+            if hyp['yseq'][-1] == eos:
+                # only store the sequence that has more than minlen outputs
+                # also add penalty
+                if len(hyp['yseq']) > minlen:
+                    hyp['score'] += (i + 1) * trans_args.penalty
+                    if rnnlm:  # Word LM needs to add final <eos> score
+                        hyp['score'] += trans_args.lm_weight * rnnlm.final(
+                            hyp['rnnlm_prev'])
+                    ended_hyps.append(hyp)
+            else:
+                remained_hyps.append(hyp)
+
+        # end detection      
+        if end_detect(ended_hyps, i) and trans_args.maxlenratio == 0.0:
+            logging.info('end detected at %d', i)
+            stop_decoding = True
+
+        hyps = remained_hyps
+        if len(hyps) > 0:
+            logging.debug('remained hypothes: ' + str(len(hyps)))
+        else:
+            logging.info('no hypothesis. Finish decoding.')
+            stop_decoding = True
+        
+        return hyps, ended_hyps, stop_decoding
+
+    def recognize_and_translate_separate(self, x, trans_args, 
+                                        char_list_tgt=None,
+                                        char_list_src=None,
+                                        rnnlm=None,
+                                        use_jit=False):
+        """Translate input speech.
+
+        :param ndnarray x: input acoustic feature (B, T, D) or (T, D)
+        :param Namespace trans_args: argment Namespace contraining options
+        :param list char_list_tgt: list of characters for target languages
+        :param list char_list_src: list of characters for source languages
+        :param torch.nn.Module rnnlm: language model module
+        :return: N-best decoding results
+        :rtype: list
+        """
+        # preprate sos
+        if getattr(trans_args, "tgt_lang", False):
+            if self.replace_sos:
+                y = char_list_tgt.index(trans_args.tgt_lang)
+        else:
+            y = self.sos_tgt
+
+        if self.one_to_many and self.lang_tok == 'decoder-pre':
+            tgt_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[-1])
+            y = char_list_tgt.index(tgt_lang_id)
+            logging.info(f'tgt_lang_id: {tgt_lang_id} - y: {y}')
+
+            src_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[0])
+            y_asr = char_list_src.index(src_lang_id)
+            logging.info(f'src_lang_id: {src_lang_id} - y_asr: {y_asr}')
+        else:
+            y = self.sos_tgt
+            y_asr = self.sos_src
+        logging.info(f'<sos> index: {str(y)}; <sos> mark: {char_list_tgt[y]}')
+        logging.info(f'<sos> index asr: {str(y_asr)}; <sos> mark asr: {char_list_src[y_asr]}')
+
+        enc_output = self.encode(x).unsqueeze(0)
+        h = enc_output.squeeze(0)
+        logging.info('input lengths: ' + str(h.size(0)))
+
+        # search parms
+        beam = trans_args.beam_size
+        beam_cross = trans_args.beam_cross_size
+        penalty = trans_args.penalty
+        assert beam_cross <= beam
+
+        if trans_args.maxlenratio == 0:
+            maxlen = h.shape[0]
+        else:
+            maxlen = max(1, int(trans_args.maxlenratio * h.size(0)))
+        if trans_args.maxlenratio_asr == 0:
+            maxlen_asr = h.shape[0]
+        else:
+            maxlen_asr = max(1, int(trans_args.maxlenratio_asr * h.size(0)))
+        minlen = int(trans_args.minlenratio * h.size(0))
+        minlen_asr = int(trans_args.minlenratio_asr * h.size(0))
+        logging.info(f'max output length: {str(maxlen)}; min output length: {str(minlen)}')
+        logging.info(f'max output length asr: {str(maxlen_asr)}; min output length asr: {str(minlen_asr)}')
+
+        # initialize hypothesis
+        if rnnlm:
+            hyp = {'score': 0.0, 'yseq': [y], 'rnnlm_prev': None}
+        else:
+            hyp = {'score': 0.0, 'yseq': [y]}
+            hyp_asr = {'score': 0.0, 'yseq': [y_asr]}
+
+        hyps = [hyp]
+        hyps_asr = [hyp_asr]
+        ended_hyps = []
+        ended_hyps_asr = []
+        stop_decoding_st = False
+        stop_decoding_asr = False
+        hyps_st_candidates = hyps
+        hyps_asr_candidates = hyps_asr
+        
+        traced_decoder = None
+        for i in six.moves.range(maxlen + self.wait_k_asr):
+            logging.info('position ' + str(i))
+
+            # Start ASR first, then after self.wait_k_asr steps, start ST
+            # ASR SEARCH
+            if i < maxlen and not stop_decoding_asr:
+                decoder_cross = self.decoder if self.cross_to_asr else None
+                hyps_asr = self.update_hypothesis(i, beam, 
+                                                  hyps_asr, 
+                                                  hyps_st_candidates,
+                                                  enc_output, 
+                                                  self.eos_tgt, 
+                                                  decoder=self.decoder_asr, 
+                                                  decoder_cross=decoder_cross, 
+                                                  wait_k_cross=self.wait_k_st
+                                                  )
+                hyps_asr, ended_hyps_asr, stop_decoding_asr = self.process_hypothesis(i, 
+                                                                    hyps_asr,
+                                                                    ended_hyps_asr,
+                                                                    maxlen_asr,
+                                                                    minlen_asr,
+                                                                    trans_args,
+                                                                    self.eos_src,
+                                                                    rnnlm=rnnlm
+                                                                    )
+                hyps_asr_candidates = sorted(hyps_asr + ended_hyps_asr,
+                                            key=lambda x: x['score'], reverse=True)[:beam_cross]
+                if char_list_src is not None:
+                    for hyp in hyps_asr:
+                        logging.info('hypo asr: ' + ''.join([char_list_src[int(x)] for x in hyp['yseq']]))
+            # ST SEARCH
+            if i >= self.wait_k_asr and not stop_decoding_st:
+                decoder_cross = self.decoder_asr if self.cross_to_st else None
+                hyps = self.update_hypothesis(i - self.wait_k_asr, beam, 
+                                              hyps, hyps_asr_candidates,
+                                              enc_output,
+                                              self.eos_src,
+                                              decoder=self.decoder,
+                                              decoder_cross=decoder_cross,
+                                              wait_k_cross=self.wait_k_asr
+                                              )
+                hyps, ended_hyps, stop_decoding_st = self.process_hypothesis(i - self.wait_k_asr, 
+                                                            hyps, ended_hyps,
+                                                            maxlen, minlen,
+                                                            trans_args,
+                                                            self.eos_tgt,
+                                                            rnnlm=rnnlm
+                                                            )
+                hyps_st_candidates = sorted(hyps + ended_hyps,
+                                            key=lambda x: x['score'], reverse=True)[:beam_cross]
+                if char_list_tgt is not None:
+                    for hyp in hyps:
+                        logging.info('hypo: ' + ''.join([char_list_tgt[int(x)] for x in hyp['yseq']]))
+            
+            # Stop decoding check
+            if stop_decoding_asr and stop_decoding_st:
+                break
+        
+        nbest_hyps = sorted(
+            ended_hyps, key=lambda x: x['score'], reverse=True)[:min(len(ended_hyps), trans_args.nbest)]
+
+        logging.info('best hypo: ' + ''.join([char_list_tgt[int(x)] for x in nbest_hyps[0]['yseq']]))
+
+        nbest_hyps_asr = sorted(
+            ended_hyps_asr, key=lambda x: x['score'], reverse=True)[:min(len(ended_hyps_asr), trans_args.nbest)]
+
+        logging.info('best hypo asr: ' + ''.join([char_list_src[int(x)] for x in nbest_hyps_asr[0]['yseq']]))
+
+        # check number of hypotheis
+        if len(nbest_hyps) == 0 or len(nbest_hyps_asr) == 0:
+            logging.warning('there is no N-best results, perform recognition again with smaller minlenratio.')
+            # should copy becasuse Namespace will be overwritten globally
+            trans_args = Namespace(**vars(trans_args))
+            trans_args.minlenratio = max(0.0, trans_args.minlenratio - 0.1)
+            return self.recognize_and_translate(x, trans_args, char_list_tgt, char_list_src, rnnlm, use_jit)
+
+        logging.info('total log probability: ' + str(nbest_hyps[0]['score']))
+        logging.info('normalized log probability: ' + str(nbest_hyps[0]['score'] / len(nbest_hyps[0]['yseq'])))
+        
+        return nbest_hyps, nbest_hyps_asr
+
     def calculate_all_attentions(self, xs_pad, ilens, ys_pad, ys_pad_src):
         """E2E attention calculation.
 

@@ -9,6 +9,7 @@ from distutils.util import strtobool
 import logging
 import math
 import six
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -459,6 +460,9 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                                     score_is_prob=False, 
                                     ratio_diverse_st=0.0,
                                     ratio_diverse_asr=0.0,
+                                    use_rev_triu_above=0,
+                                    use_rev_triu_below=0,
+                                    use_diag=False,
                                     debug=False):
         """Recognize and translate input speech.
 
@@ -472,6 +476,9 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         assert self.do_asr, "Recognize and translate are performed simultaneously."
         assert 0 <= ratio_diverse_asr < 1
         assert 0 <= ratio_diverse_st < 1
+        logging.info(f'use_rev_triu_above: {use_rev_triu_above}')
+        logging.info(f'use_rev_triu_below: {use_rev_triu_below}')
+        logging.info(f'use_diag: {use_diag}')
 
         if self.one_to_many and self.lang_tok == 'decoder-pre':
             tgt_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[-1])
@@ -587,6 +594,14 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                     # Get best tokens
                     s2v = s2v.reshape(beam, beam, 2)
                     Sc = S[:cr, :ct]
+                    if use_diag:
+                        mask = np.add.outer(np.arange(cr), -np.arange(ct)[::-1]) > 0
+                        mask = torch.from_numpy(mask)
+                        Sc = Sc.masked_fill(mask, float('-inf'))
+                    if use_rev_triu_above > 0 or use_rev_triu_below > 0:
+                        mask = np.abs(np.add.outer(np.arange(cr), -np.arange(ct))) >= use_rev_triu_above + use_rev_triu_below
+                        mask = torch.from_numpy(mask)
+                        Sc = Sc.masked_fill(mask, float('-inf'))
                     local_best_scores, id2k = Sc.flatten().topk(beam)
                     I = s2v[:cr, :ct]
                     I = I.reshape(-1, 2)
@@ -634,23 +649,23 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
 
             hyps_best_kept = sorted(hyps_best_kept, key=lambda x: x['score'], reverse=True)[:beam]
 
-            if ratio_diverse_st==0 and ratio_diverse_asr==0:
-                hyps_best_kept = sorted(hyps_best_kept, key=lambda x: x['score'], reverse=True)[:beam]
-            else:
-                hyps_best_kept = sorted(hyps_best_kept, key=lambda x: x['score'], reverse=True)
-                hyps_best_kept_tmp = []
-                last_tokens_st = dict.fromkeys(set([h['yseq'][-1] for h in hyps_best_kept]), 0)
-                last_tokens_asr = dict.fromkeys(set([h['yseq_asr'][-1] for h in hyps_best_kept]), 0)
-                count = 0
-                for ii, hyps in enumerate(hyps_best_kept):
-                    if last_tokens_asr[hyps['yseq_asr'][-1]] < cr and last_tokens_st[hyps['yseq'][-1]] < ct:
-                        hyps_best_kept_tmp.append(hyps)
-                        last_tokens_st[hyps['yseq'][-1]] += 1
-                        last_tokens_asr[hyps['yseq_asr'][-1]] += 1
-                        count += 1
-                        if count == beam:
-                            break
-                hyps_best_kept = hyps_best_kept_tmp
+            # if ratio_diverse_st==0 and ratio_diverse_asr==0:
+            #     hyps_best_kept = sorted(hyps_best_kept, key=lambda x: x['score'], reverse=True)[:beam]
+            # else:
+            #     hyps_best_kept = sorted(hyps_best_kept, key=lambda x: x['score'], reverse=True)
+            #     hyps_best_kept_tmp = []
+            #     last_tokens_st = dict.fromkeys(set([h['yseq'][-1] for h in hyps_best_kept]), 0)
+            #     last_tokens_asr = dict.fromkeys(set([h['yseq_asr'][-1] for h in hyps_best_kept]), 0)
+            #     count = 0
+            #     for ii, hyps in enumerate(hyps_best_kept):
+            #         if last_tokens_asr[hyps['yseq_asr'][-1]] < cr and last_tokens_st[hyps['yseq'][-1]] < ct:
+            #             hyps_best_kept_tmp.append(hyps)
+            #             last_tokens_st[hyps['yseq'][-1]] += 1
+            #             last_tokens_asr[hyps['yseq_asr'][-1]] += 1
+            #             count += 1
+            #             if count == beam:
+            #                 break
+            #     hyps_best_kept = hyps_best_kept_tmp
 
             # sort and get nbest
             hyps = hyps_best_kept

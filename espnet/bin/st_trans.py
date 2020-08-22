@@ -90,6 +90,9 @@ def get_parser():
     parser.add_argument('--trans', default=False, type=strtobool)
     parser.add_argument('--debug', default=False, type=strtobool)
     parser.add_argument('--recog-and-trans', default=False, type=strtobool)
+    parser.add_argument('--use-rev-triu-above', default=0, type=int)
+    parser.add_argument('--use-rev-triu-below', default=0, type=int)
+    parser.add_argument('--use-diag', default=False, type=strtobool)
     parser.add_argument('--beam-search-type', type=str, choices=['sum', 'separate', 'sum-mono', 'half-joint'], default='separate',
                         help='Beam search type when doing recognition and translation simultaneously.')
     parser.add_argument('--beam-cross-size', type=int, default=1,

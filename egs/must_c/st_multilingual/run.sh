@@ -603,9 +603,9 @@ if [[ ${stage} -le 4 ]] && [[ ${stop_stage} -ge 4 ]]; then
         --verbose ${verbose} \
         --resume $resume \
         --train-json ${train_json_dir} \
-        --valid-json ${val_json_dir} \
-        --enc-init ${asr_model} \
-        --dec-init ${st_model}
+        --valid-json ${val_json_dir}
+        # --enc-init ${asr_model} \
+        # --dec-init ${st_model}
     
     echo "Log output is saved in ${expdir}/train.log"
 fi

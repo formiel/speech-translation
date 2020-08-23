@@ -460,8 +460,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                                     score_is_prob=False, 
                                     ratio_diverse_st=0.0,
                                     ratio_diverse_asr=0.0,
-                                    use_rev_triu_above=0,
-                                    use_rev_triu_below=0,
+                                    use_rev_triu_width=0,
                                     use_diag=False,
                                     debug=False):
         """Recognize and translate input speech.
@@ -476,8 +475,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         assert self.do_asr, "Recognize and translate are performed simultaneously."
         assert 0 <= ratio_diverse_asr < 1
         assert 0 <= ratio_diverse_st < 1
-        logging.info(f'use_rev_triu_above: {use_rev_triu_above}')
-        logging.info(f'use_rev_triu_below: {use_rev_triu_below}')
+        logging.info(f'use_rev_triu_width: {use_rev_triu_width}')
         logging.info(f'use_diag: {use_diag}')
 
         if self.one_to_many and self.lang_tok == 'decoder-pre':
@@ -598,8 +596,8 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                         mask = np.add.outer(np.arange(cr), -np.arange(ct)[::-1]) > 0
                         mask = torch.from_numpy(mask)
                         Sc = Sc.masked_fill(mask, float('-inf'))
-                    if use_rev_triu_above > 0 or use_rev_triu_below > 0:
-                        mask = np.abs(np.add.outer(np.arange(cr), -np.arange(ct))) >= use_rev_triu_above + use_rev_triu_below
+                    if use_rev_triu_width > 0:
+                        mask = np.abs(np.add.outer(np.arange(cr), -np.arange(ct))) >= use_rev_triu_width
                         mask = torch.from_numpy(mask)
                         Sc = Sc.masked_fill(mask, float('-inf'))
                     local_best_scores, id2k = Sc.flatten().topk(beam)

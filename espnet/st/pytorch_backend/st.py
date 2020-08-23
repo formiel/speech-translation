@@ -774,8 +774,7 @@ def trans(args):
                                                                         score_is_prob=args.score_is_prob,
                                                                         ratio_diverse_st=args.ratio_diverse_st,
                                                                         ratio_diverse_asr=args.ratio_diverse_asr,
-                                                                        use_rev_triu_above=args.use_rev_triu_above,
-                                                                        use_rev_triu_below=args.use_rev_triu_below,
+                                                                        use_rev_triu_width=args.use_rev_triu_width,
                                                                         use_diag=args.use_diag,
                                                                         debug=args.debug)
                         new_js[name] = add_results_to_json_st_asr(js[name], nbest_hyps, 

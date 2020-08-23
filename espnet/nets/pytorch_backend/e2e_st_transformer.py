@@ -1110,8 +1110,7 @@ class E2E(STInterface, torch.nn.Module):
                                     score_is_prob=False, 
                                     ratio_diverse_st=0.0,
                                     ratio_diverse_asr=0.0,
-                                    use_rev_triu_above=0,
-                                    use_rev_triu_below=0,
+                                    use_rev_triu_width=0,
                                     use_diag=False,
                                     debug=False):
         """Recognize and translate input speech.

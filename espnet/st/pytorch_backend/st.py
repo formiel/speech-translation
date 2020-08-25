@@ -310,6 +310,9 @@ def train(args):
     logging.info(f'| lang_pairs  : {lang_pairs}')
     logging.info(f'| use_joint_dict = {args.use_joint_dict}')
 
+    if args.use_adapters:
+        args.adapters = [l for l in tgt_langs]
+
     # Prepare language ID tokens for one-to-many systems 
     if args.one_to_many:
         if args.use_joint_dict:
@@ -408,6 +411,22 @@ def train(args):
         dtype = getattr(torch, args.train_dtype)
     else:
         dtype = torch.float32
+    
+    # freeze all weights except for adapters
+    if args.use_adapters:
+        for p in model.parameters():
+            p.requires_grad = False
+        for n, p in model.named_parameters():
+            if "adapters" in n:
+                p.requires_grad = True
+    
+    n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print('*'*50 + '\nTrainable parameters include:')
+    for n, p in model.named_parameters():
+        if p.requires_grad:
+            print(n)
+    print('Number of trainable params:', n_parameters)
+
     model = model.to(device=device, dtype=dtype)
 
     # Setup an optimizer
@@ -451,7 +470,7 @@ def train(args):
     num_langs = len(tgt_langs)
     train_all_pairs = [None] * num_langs
     valid_all_pairs = [None] * num_langs
-    batch_size = args.batch_size//num_langs if num_langs > 1 else args.batch_size
+    batch_size = args.batch_size//num_langs if num_langs > 1 and not args.use_adapters else args.batch_size
     for i, jpath in enumerate(train_jpaths):
         with open(jpath, 'rb') as f:
             train_json = json.load(f)['utts']
@@ -478,28 +497,32 @@ def train(args):
                         batch_frames_inout=args.batch_frames_inout)
 
     if num_langs > 1:
-        cycle_train = [cycle(x) for x in train_all_pairs]
-        cycle_valid = [cycle(x) for x in valid_all_pairs]
+        if not args.use_adapters:
+            cycle_train = [cycle(x) for x in train_all_pairs]
+            cycle_valid = [cycle(x) for x in valid_all_pairs]
 
-        num_batches_train = max(len(i) for i in train_all_pairs)
-        num_batches_valid = max(len(i) for i in valid_all_pairs)
-        train = [None] * num_batches_train
-        valid = [None] * num_batches_valid
+            num_batches_train = max(len(i) for i in train_all_pairs)
+            num_batches_valid = max(len(i) for i in valid_all_pairs)
+            train = [None] * num_batches_train
+            valid = [None] * num_batches_valid
 
-        for i, s in enumerate(zip(*cycle_train)):
-            x = []
-            for y in s:
-                x.extend(y)
-            train[i] = x
-            if i >= num_batches_train - 1:
-                break
-        for i, s in enumerate(zip(*cycle_valid)):
-            x = []
-            for y in s:
-                x.extend(y)
-            valid[i] = x
-            if i >= num_batches_valid - 1:
-                break
+            for i, s in enumerate(zip(*cycle_train)):
+                x = []
+                for y in s:
+                    x.extend(y)
+                train[i] = x
+                if i >= num_batches_train - 1:
+                    break
+            for i, s in enumerate(zip(*cycle_valid)):
+                x = []
+                for y in s:
+                    x.extend(y)
+                valid[i] = x
+                if i >= num_batches_valid - 1:
+                    break
+        else:
+            train = [lg_mini for lg_all_batches in train_all_pairs for lg_mini in lg_all_batches]
+            valid = [lg_mini for lg_all_batches in valid_all_pairs for lg_mini in lg_all_batches]
     else:
         train = train_all_pairs[0]
         valid = valid_all_pairs[0]
@@ -701,7 +724,7 @@ def train(args):
     # Resume from a snapshot
     if args.resume:
         logging.info('resumed from %s' % args.resume)
-        torch_resume(args.resume, trainer)
+        torch_resume(args.resume, trainer, reset_optimizer=args.use_adapters)
 
     # Run the training
     trainer.run()

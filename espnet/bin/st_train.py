@@ -224,6 +224,8 @@ def get_parser(parser=None, required=True):
                         help='Language token added in the source')
     parser.add_argument('--num-decoders', choices=[1, 2], default=2, type=int,
                         help='Number of decoders in multilingual ST.')
+    parser.add_argument('--use-adapters', default=False, type=strtobool,
+                        help='Use adapters for fine-tuning pre-trained model')
     # Dual attention related
     parser.add_argument('--cross-weight', default=0.0, type=float,
                         help='Weight decay ratio')

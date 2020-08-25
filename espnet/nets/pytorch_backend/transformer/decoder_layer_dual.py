@@ -40,7 +40,9 @@ class DualDecoderLayer(nn.Module):
                  cross_weight_learnable=False, 
                  cross_weight=0.0,
                  cross_to_asr=True,
-                 cross_to_st=True):
+                 cross_to_st=True,
+                 adapters=None,
+                 ):
         """Construct an DecoderLayer object."""
         super(DualDecoderLayer, self).__init__()
         self.size = size
@@ -103,11 +105,14 @@ class DualDecoderLayer(nn.Module):
             self.concat_linear1_asr = nn.Linear(size + size, size)
             self.concat_linear2_asr = nn.Linear(size + size, size)
 
+        self.adapters = adapters
+
     def forward(self, tgt, tgt_mask, tgt_asr, tgt_mask_asr, 
                 memory, memory_mask, 
                 cross_mask, cross_mask_asr,
                 cross_self=False, cross_src=False,
-                cross_self_from="before-self", cross_src_from="before-src", 
+                cross_self_from="before-self", cross_src_from="before-src",
+                lang_id=None, 
                 cache=None, cache_asr=None):
         """Compute decoded features.
 
@@ -245,6 +250,10 @@ class DualDecoderLayer(nn.Module):
             x = self.norm3(x)
             x_asr = self.norm3_asr(x_asr)
         
+        # Adapters
+        if lang_id is not None and self.adapters is not None:
+            x = self.adapters[lang_id](x, x)[0]
+
         if cache is not None:
             x = torch.cat([cache, x], dim=1)
         if cache_asr is not None:

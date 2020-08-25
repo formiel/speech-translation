@@ -209,6 +209,12 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
             attention_dropout_rate=args.transformer_attn_dropout_rate
         )
 
+        adapter_names = getattr(args, "adapters", None)
+        # convert target language tokens to ids
+        if adapter_names:
+            adapter_names = [str(args.char_list_tgt.index(f'<2{l}>')) for l in adapter_names]
+        logging.info(f'| adapters = {adapter_names}')
+
         self.dual_decoder = DualDecoder(
                 odim_tgt,
                 odim_src,
@@ -228,7 +234,8 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                 cross_src=self.cross_src,
                 cross_to_asr=self.cross_to_asr,
                 cross_to_st=self.cross_to_st,
-                use_output_layer=True if self.use_joint_dict else False
+                use_output_layer=True if self.use_joint_dict else False,
+                adapter_names=adapter_names,
         )
 
         if not self.use_joint_dict:

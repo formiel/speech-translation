@@ -6,7 +6,9 @@
 
 """Decoder definition."""
 
+import logging
 import torch
+from torch import nn
 
 from espnet.nets.pytorch_backend.transformer.attention import MultiHeadedAttention
 from espnet.nets.pytorch_backend.transformer.decoder_layer_dual import DualDecoderLayer
@@ -16,6 +18,7 @@ from espnet.nets.pytorch_backend.transformer.mask import subsequent_mask
 from espnet.nets.pytorch_backend.transformer.positionwise_feed_forward import PositionwiseFeedForward
 from espnet.nets.pytorch_backend.transformer.repeat import repeat
 from espnet.nets.scorer_interface import ScorerInterface
+from espnet.nets.pytorch_backend.transformer.adapter import Adapter
 
 
 class DualDecoder(ScorerInterface, torch.nn.Module):
@@ -59,7 +62,9 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
                  cross_self=False,
                  cross_src=False,
                  cross_to_asr=True,
-                 cross_to_st=True):
+                 cross_to_st=True,
+                 adapter_names=None,
+                 ):
         """Construct an Decoder object."""
         torch.nn.Module.__init__(self)
         if input_layer == "embed":
@@ -99,6 +104,15 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
             raise NotImplementedError("only `embed` or torch.nn.Module is supported.")
         self.normalize_before = normalize_before
 
+        self.adapter_names = adapter_names
+        adapters = None
+        if adapter_names:
+            adapters = nn.ModuleDict(
+                {
+                    k: Adapter(attention_dim) for k in adapter_names
+                }
+            )
+
         self.dual_decoders = repeat(
             num_blocks,
             lambda: DualDecoderLayer(
@@ -120,7 +134,8 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
                 cross_weight_learnable=cross_weight_learnable,
                 cross_weight=cross_weight,
                 cross_to_asr=cross_to_asr,
-                cross_to_st=cross_to_st
+                cross_to_st=cross_to_st,
+                adapters=adapters,
             )
         )
         if self.normalize_before:
@@ -157,9 +172,15 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
         """
         x = self.embed(tgt)
         x_asr = self.embed_asr(tgt_asr)
+        if self.adapter_names:
+            # lang_id = str(tgt[:, 0:1][0].cpu().detach().numpy()[0])
+            lang_id = str(tgt[:, 0:1][0].item())
+        else:
+            lang_id = None
         x, tgt_mask, x_asr, tgt_mask_asr, memory, memory_mask, _, _, _, _, _, _  = self.dual_decoders(x, tgt_mask, x_asr, tgt_mask_asr, 
                                                                                         memory, memory_mask, cross_mask, cross_mask_asr, 
-                                                                                        cross_self, cross_src, cross_self_from, cross_src_from)
+                                                                                        cross_self, cross_src, cross_self_from, cross_src_from,
+                                                                                        lang_id)
         if self.normalize_before:
             x = self.after_norm(x)
             x_asr = self.after_norm_asr(x_asr)

@@ -42,6 +42,7 @@ st_model=
 
 # training related
 preprocess_config=
+use_adapters=                # if true, use adapter for fine-tuning
 
 # preprocessing related
 src_case=lc.rm              # lc.rm: lowercase with punctuation removal
@@ -603,7 +604,8 @@ if [[ ${stage} -le 4 ]] && [[ ${stop_stage} -ge 4 ]]; then
         --verbose ${verbose} \
         --resume $resume \
         --train-json ${train_json_dir} \
-        --valid-json ${val_json_dir}
+        --valid-json ${val_json_dir} \
+        --use-adapters ${use_adapters}
         # --enc-init ${asr_model} \
         # --dec-init ${st_model}
     
@@ -640,6 +642,7 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
                 local/average_checkpoints_st.py \
                     ${opt} \
                     --max-iter-eval ${max_iter_eval} \
+                    --min-iter-eval 0 \
                     --backend ${backend} \
                     --snapshots ${expdir}/results/snapshot.iter.* \
                     --out ${expdir}/results/${trans_model} \

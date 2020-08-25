@@ -21,6 +21,7 @@ def main():
         if len(val_scores) == 0:
             raise ValueError("`validation/main/acc` or `val_perplexity` is not found in log.")
         val_scores = np.array(val_scores)
+        val_scores = val_scores[val_scores[:,0] >= args.min_iter_eval]
         val_scores = val_scores[val_scores[:,0] <= args.max_iter_eval]
 
         if args.num == 1:
@@ -102,6 +103,7 @@ def get_parser():
     parser.add_argument("--backend", default='chainer', type=str)
     parser.add_argument("--log", default=None, type=str, nargs="?")
     parser.add_argument("--max-iter-eval", default=0, type=int)
+    parser.add_argument("--min-iter-eval", default=0, type=int)
     return parser
 
 

@@ -35,6 +35,7 @@ tgt_langs=
 # you can choose from de, es, fr, it, nl, pt, ro, ru
 # To train the multilingual model, segment languages with _ as follows:
 # e.g., tgt_lang="de_es_fr"
+use_lid=true         # can be set to false (not use language id) for bilingual systems
 
 # pre-training related
 asr_model=
@@ -81,12 +82,20 @@ for lang in $(echo ${tgt_langs} | tr '_' ' '); do
     lang_count=$((lang_count + 1))
 done
 lang_pairs=$(echo ${lang_pairs::-1})
+# Force using language ID if there is more than 1 target languages
+if (( $lang_count != 1 )); then
+    use_lid=true
+fi
 
 # suffix for dictionaries
-if (( $lang_count == 8 )); then
-    suffix="lgs_all8"
-else
-    suffix="lgs_${tgt_langs}"
+if (( $lang_count != 1 )); then
+    if (( $lang_count == 8 )); then
+        suffix="lgs_all8"
+    else
+        suffix="lgs_${tgt_langs}"
+    fi
+elif (( $lang_count == 1 )); then
+    suffix="lgs_${tgt_langs}_id_${use_lid}"
 fi
 
 # training configuration
@@ -109,6 +118,7 @@ echo "| nbpe: ${nbpe}"
 echo "| nbpe_src: ${nbpe_src}"
 echo "| dictionary prefix: ${dprefix}"
 echo "| dictionary suffix: ${suffix}"
+echo "| use language ID: ${use_lid}"
 echo "| train_config: ${train_config}"
 echo "| preprocess_config: ${preprocess_config}"
 echo "| pre-trained weights for encoder: ${asr_model}"
@@ -292,7 +302,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
         echo "*** Make a joint source and target dictionary ***"
         # echo "<unk> 1" > ${dict} # <unk> must be 1, 0 will be used for "blank" in CTC
         special_symbols="<unk> 1"
-        if (( $lang_count != 1 )); then
+        if [[ ${use_lid} == "true" ]]; then
             i=2
             all_langs=$(echo "${tgt_langs}_en" | tr '_' ' ')
             all_langs_sorted=$(echo ${all_langs[*]}| tr " " "\n" | sort -n | tr "\n" " ")
@@ -317,7 +327,6 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
         for lang in $(echo ${tgt_langs} | tr '_' ' '); do
             grep sp1.0 data/train_sp.en-${lang}.${lang}/text.${tgt_case} | cut -f 2- -d' ' | grep -v -e '^\s*$' >> ${input_path}
             grep sp1.0 data/train_sp.en-${lang}.en/text.${src_case} | cut -f 2- -d' ' | grep -v -e '^\s*$' >> ${input_path}
-            # cat data/lang_1spm/use_${dprefix}/input_en-${lang}.${lang}.${tgt_case}.txt >> ${input_path}
         done
         spm_train --user_defined_symbols="$(tr "\n" "," < ${nlsyms})" --input=${input_path} --vocab_size=${nbpe} --model_type=${bpemode} --model_prefix=${bpemodel} --input_sentence_size=100000000 --character_coverage=1.0
         spm_encode --model=${bpemodel}.model --output_format=piece < ${input_path} | tr ' ' '\n' | sort | uniq | awk -v offset=${offset} '{print $0 " " NR+offset}' >> ${dict}
@@ -398,7 +407,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
         # add more special symbols for later use
         # special_symbols="<unk> 1; <s> 2; </s> 3; <pad> 4; <TRANS> 5; <RECOG> 6; <DELAY> 7"
         special_symbols="<unk> 1"
-        if (( $lang_count != 1 )); then
+        if [[ ${use_lid} == "true" ]]; then
             i=2
             tgt_langs_sorted=$(echo ${tgt_langs[*]}| tr " " "\n" | sort -n | tr "\n" " ")
             echo "target langs sorted: ${tgt_langs_sorted}"
@@ -465,7 +474,11 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
 
         echo "*** Make a source dictionary ***"
         # echo "<unk> 1" > ${dict} # <unk> must be 1, 0 will be used for "blank" in CTC
-        special_symbols="<unk> 1; <2en> 2"
+        if [[ ${use_lid} == "true" ]]; then
+            special_symbols="<unk> 1; <2en> 2"
+        else
+            special_symbols="<unk> 1"
+        fi
         sed "s/; /\n/g" <<< ${special_symbols} > ${dict_src}
         echo "special symbols"
         cat ${dict_src}
@@ -536,7 +549,8 @@ echo "| tensorboard_dir: ${tensorboard_dir}"
 
 # Data input folders
 datadir=${datadir}/${tgt_langs}/use_${dprefix}/src${nbpe_src}_tgt${nbpe}
-if [[ $lang_count -eq 1 ]]; then
+if (( $lang_count == 1 )); then
+    datadir=${datadir}/use_lid_${use_lid}
     train_json_dir=${datadir}/train_sp/en-${tgt_langs}.json
     val_json_dir=${datadir}/dev/en-${tgt_langs}.json 
 else
@@ -605,7 +619,8 @@ if [[ ${stage} -le 4 ]] && [[ ${stop_stage} -ge 4 ]]; then
         --resume $resume \
         --train-json ${train_json_dir} \
         --valid-json ${val_json_dir} \
-        --use-adapters ${use_adapters}
+        --use-adapters ${use_adapters} \
+        --use-lid ${use_lid}
         # --enc-init ${asr_model} \
         # --dec-init ${st_model}
     

@@ -297,6 +297,8 @@ def train(args):
     # get paths to data
     lang_pairs = sorted(args.lang_pairs.split(','))
     args.one_to_many = True if len(lang_pairs) > 1 else False
+    if args.one_to_many:
+        assert args.use_lid
     tgt_langs = sorted([p.split('-')[-1] for p in lang_pairs])
     src_lang = lang_pairs[0].split('-')[0]
     if args.one_to_many:
@@ -309,12 +311,13 @@ def train(args):
     logging.info(f'| valid_jpaths: {valid_jpaths}')
     logging.info(f'| lang_pairs  : {lang_pairs}')
     logging.info(f'| use_joint_dict = {args.use_joint_dict}')
+    logging.info(f'| use_lid = {args.use_lid}')
 
     if args.use_adapters:
         args.adapters = [l for l in tgt_langs]
 
     # Prepare language ID tokens for one-to-many systems 
-    if args.one_to_many:
+    if args.use_lid:
         if args.use_joint_dict:
             all_langs = list(sorted(set([l for p in lang_pairs for l in p.split('-')])))
             langs_dict = {}
@@ -419,12 +422,12 @@ def train(args):
         for n, p in model.named_parameters():
             if "adapters" in n:
                 p.requires_grad = True
-    
+        print('*'*50 + '\nTrainable parameters include:')
+        for n, p in model.named_parameters():
+            if p.requires_grad:
+                print(n)
+
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print('*'*50 + '\nTrainable parameters include:')
-    for n, p in model.named_parameters():
-        if p.requires_grad:
-            print(n)
     print('Number of trainable params:', n_parameters)
 
     model = model.to(device=device, dtype=dtype)
@@ -555,7 +558,6 @@ def train(args):
         n_iter_processes = multiprocessing.cpu_count()
     elif n_iter_processes > 0:
         n_iter_processes = min(n_iter_processes, multiprocessing.cpu_count())
-    print(f'n_iter_processes = {n_iter_processes}')
     
     train_iter = {'main': ChainerDataLoader(
         dataset=TransformDataset(train, lambda data: converter([load_tr(data)])),

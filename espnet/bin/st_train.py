@@ -219,9 +219,13 @@ def get_parser(parser=None, required=True):
                               (the first token in the target sequence)')
     # One-to-many models related
     parser.add_argument('--lang-pairs', type=str,
-                        help='Comma-seperated list of langage pairs for one-to-many system. For example: en-de,en-fr,en-nl')
+                        help='Comma-seperated list of langage pairs for \
+                            one-to-many system. For example: en-de,en-fr,en-nl')
     parser.add_argument('--lang-tok', choices=['encoder-pre-sum', 'decoder-pre'], default=None, type=str,
                         help='Language token added in the source')
+    parser.add_argument('--use-lid', default=False, type=strtobool,
+                        help='Use both tgt and src language ID to \
+                              replace <sos> token in the decoder')
     parser.add_argument('--num-decoders', choices=[1, 2], default=2, type=int,
                         help='Number of decoders in multilingual ST.')
     parser.add_argument('--use-adapters', default=False, type=strtobool,
@@ -305,7 +309,6 @@ def main(cmd_args):
         model_module = args.model_module
     model_class = dynamic_import(model_module)
     model_class.add_arguments(parser)
-    print(f'model_class: {model_class}')
 
     args = parser.parse_args(cmd_args)
     args.start_time = time.time()

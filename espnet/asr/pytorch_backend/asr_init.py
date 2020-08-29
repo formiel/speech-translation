@@ -295,7 +295,7 @@ def get_trained_model_state_dict_multi(model_path):
 
         return torch.load(model_path), True
 
-    idim, odim_tgt, odim_src, args = get_model_conf(model_path, conf_path)
+    idim, odim_tgt, odim_src, args = get_model_conf_multi(model_path, conf_path)
 
     logging.warning('reading model parameters from ' + model_path)
 

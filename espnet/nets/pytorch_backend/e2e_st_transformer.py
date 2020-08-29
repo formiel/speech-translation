@@ -148,6 +148,7 @@ class E2E(STInterface, torch.nn.Module):
         # one-to-many models parameters
         self.use_joint_dict = getattr(args, "use_joint_dict", True)
         self.one_to_many = getattr(args, "one_to_many", False)
+        self.use_lid = getattr(args, "use_lid", False)
         if self.use_joint_dict:
             self.langs_dict = getattr(args, "langs_dict_tgt", None)
         self.lang_tok = getattr(args, "lang_tok", None)
@@ -168,6 +169,8 @@ class E2E(STInterface, torch.nn.Module):
             assert self.cross_operator in ['self_sum', 'self_concat', 'src_sum', 'src_concat', 'self_src_sum', 'self_src_concat']
 
         # Check parameters
+        if self.one_to_many:
+            assert self.use_lid
         if self.cross_operator and 'sum' in self.cross_operator and self.cross_weight <= 0:
             assert (not self.cross_to_asr) and (not self.cross_to_st)
         if self.cross_to_asr or self.cross_to_st:
@@ -257,7 +260,7 @@ class E2E(STInterface, torch.nn.Module):
                 use_output_layer=True if self.use_joint_dict else False,
             )
             if self.num_decoders == 1:
-                logging.info('*** Use one decoder *** ')
+                logging.info('*** Use shared decoders *** ')
                 self.decoder_asr = self.decoder
 
         if not self.use_joint_dict:
@@ -338,7 +341,7 @@ class E2E(STInterface, torch.nn.Module):
         # src_lang_ids = None
         tgt_lang_ids, tgt_lang_ids_src = None, None
 
-        if self.one_to_many:
+        if self.use_lid:
             tgt_lang_ids = ys_pad[:, 0:1]
             ys_pad = ys_pad[:, 1:] # remove target language ID in the beginning
             

@@ -148,6 +148,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         # one-to-many ST experiments
         self.use_joint_dict = getattr(args, "use_joint_dict", True)
         self.one_to_many = getattr(args, "one_to_many", False)
+        self.use_lid = getattr(args, "use_lid", False)
         if self.use_joint_dict:
             self.langs_dict = getattr(args, "langs_dict_tgt", None)
         self.lang_tok = getattr(args, "lang_tok", None)
@@ -157,6 +158,8 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         self.normalize_before = getattr(args, "normalize_before", True)
 
         # Check parameters
+        if self.one_to_many:
+            assert self.use_lid
         if self.cross_operator == 'sum' and self.cross_weight <= 0:
             assert (not self.cross_to_asr) and (not self.cross_to_st)
         if self.cross_to_asr or self.cross_to_st:
@@ -308,7 +311,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         # 0. Extract target language ID
         # src_lang_ids = None
         tgt_lang_ids, tgt_lang_ids_src = None, None
-        if self.one_to_many:
+        if self.use_lid:
             tgt_lang_ids = ys_pad[:, 0:1]
             ys_pad = ys_pad[:, 1:]  # remove target language ID in the beggining
             

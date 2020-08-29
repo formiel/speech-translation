@@ -32,6 +32,7 @@ trans_model=model.acc.best # set a model to be used for decoding: 'model.acc.bes
 n_average=5                  # the number of ST models to be averaged
 use_valbest_average=true     # if true, the validation `n_average`-best ST models will be averaged.
                              # if false, the last `n_average` ST models will be averaged.
+metric=bleu                  # loss/acc/bleu
 
 # pre-training related
 asr_model=
@@ -74,8 +75,7 @@ train_set=train_sp.en-${tgt_lang}.${tgt_lang}
 train_dev=dev.en-${tgt_lang}.${tgt_lang}
 trans_set=""
 for lang in $(echo ${tgt_lang} | tr '_' ' '); do
-    # trans_set="${trans_set} tst-COMMON.en-${lang}.${lang} tst-HE.en-${lang}.${lang}"
-    trans_set="train_sp.en-${lang}.${lang}" # for debug
+    trans_set="${trans_set} tst-COMMON.en-${lang}.${lang} tst-HE.en-${lang}.${lang}"
 done
 
 if [ ${stage} -le -1 ] && [ ${stop_stage} -ge -1 ]; then
@@ -207,13 +207,13 @@ if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
 
     echo "make json files"
     data2json.sh --nj 16 --feat ${feat_tr_dir}/feats.scp --text data/${train_set}/text.${tgt_case} --bpecode ${bpemodel}.model --lang ${tgt_lang} \
-        data/${train_set} ${dict} > ${feat_tr_dir}/data_${bpemode}${nbpe}.${tgt_case}.json
+        data/${train_set} ${dict} > ${feat_tr_dir}/data_${bpemode}${nbpe}.${src_case}_${tgt_case}.json
     data2json.sh --feat ${feat_dt_dir}/feats.scp --text data/${train_dev}/text.${tgt_case} --bpecode ${bpemodel}.model --lang ${tgt_lang} \
-        data/${train_dev} ${dict} > ${feat_dt_dir}/data_${bpemode}${nbpe}.${tgt_case}.json
+        data/${train_dev} ${dict} > ${feat_dt_dir}/data_${bpemode}${nbpe}.${src_case}_${tgt_case}.json
     for ttask in ${trans_set}; do
         feat_trans_dir=${dumpdir}/${ttask}/delta${do_delta}
         data2json.sh --feat ${feat_trans_dir}/feats.scp --text data/${ttask}/text.${tgt_case} --bpecode ${bpemodel}.model --lang ${tgt_lang} \
-            data/${ttask} ${dict} > ${feat_trans_dir}/data_${bpemode}${nbpe}.${tgt_case}.json
+            data/${ttask} ${dict} > ${feat_trans_dir}/data_${bpemode}${nbpe}.${src_case}_${tgt_case}.json
     done
 
     # update json (add source references)
@@ -221,7 +221,7 @@ if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
         feat_dir=${dumpdir}/${x}/delta${do_delta}
         data_dir=data/$(echo ${x} | cut -f 1 -d ".").en-${tgt_lang}.en
         update_json.sh --text ${data_dir}/text.${src_case} --bpecode ${bpemodel}.model \
-            ${feat_dir}/data_${bpemode}${nbpe}.${tgt_case}.json ${data_dir} ${dict}
+            ${feat_dir}/data_${bpemode}${nbpe}.${src_case}_${tgt_case}.json ${data_dir} ${dict}
     done
 fi
 
@@ -265,8 +265,8 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
         --seed ${seed} \
         --verbose ${verbose} \
         --resume ${resume} \
-        --train-json ${feat_tr_dir}/data_${bpemode}${nbpe}.${tgt_case}.json \
-        --valid-json ${feat_dt_dir}/data_${bpemode}${nbpe}.${tgt_case}.json \
+        --train-json ${feat_tr_dir}/data_${bpemode}${nbpe}.${src_case}_${tgt_case}.json \
+        --valid-json ${feat_dt_dir}/data_${bpemode}${nbpe}.${src_case}_${tgt_case}.json \
         --enc-init ${asr_model} \
         --dec-init ${mt_model}
 fi
@@ -277,19 +277,17 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
         # Average ST models
         if ${use_valbest_average}; then
             trans_model=model.val${n_average}.avg.best
-            opt="--log ${expdir}/results/log"
+            opt="--log ${expdir}/results/log --metric ${metric}"
         else
             trans_model=model.last${n_average}.avg.best
             opt="--log"
         fi
-        # trans_model=${expdir}/results/model.val5.avg.best # for debug
-        trans_model=$WORK/Experiments_espnet_old/exp/train_sp.en-de.de_tc_pytorch_train_pytorch_transformer_short_long_bpe8000_specaug/results/model.val5.avg.best
-        # average_checkpoints.py \
-        #     ${opt} \
-        #     --backend ${backend} \
-        #     --snapshots ${expdir}/results/snapshot.ep.* \
-        #     --out ${expdir}/results/${trans_model} \
-        #     --num ${n_average}
+        average_checkpoints.py \
+            ${opt} \
+            --backend ${backend} \
+            --snapshots ${expdir}/results/snapshot.ep.* \
+            --out ${expdir}/results/${trans_model} \
+            --num ${n_average}
     fi
 
     pids=() # initialize pids
@@ -298,9 +296,8 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
         decode_dir=decode_${ttask}_$(basename ${decode_config%.*})
         feat_trans_dir=${dumpdir}/${ttask}/delta${do_delta}
 
-        nj=1
         # split data
-        splitjson.py --parts ${nj} ${feat_trans_dir}/data_${bpemode}${nbpe}.${tgt_case}.json
+        splitjson.py --parts ${nj} ${feat_trans_dir}/data_${bpemode}${nbpe}.${src_case}_${tgt_case}.json
 
         #### use CPU for decoding
         ngpu=0
@@ -313,8 +310,7 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
             --batchsize 0 \
             --trans-json ${feat_trans_dir}/split${nj}utt/data_${bpemode}${nbpe}.JOB.json \
             --result-label ${expdir}/${decode_dir}/data.JOB.json \
-            --model ${trans_model} \
-            --trans True
+            --model ${expdir}/results/${trans_model}
 
         score_bleu.sh --case ${tgt_case} --bpe ${nbpe} --bpemodel ${bpemodel}.model \
             ${expdir}/${decode_dir} ${tgt_lang} ${dict}

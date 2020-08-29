@@ -37,9 +37,9 @@ json2trn_mt.py ${dir}/data.json ${dic_tgt} --refs ${dir}/ref.trn.org.${tgt_lang}
     --hyps ${dir}/hyp.trn.org.${tgt_lang} --srcs ${dir}/src.trn.org.${tgt_lang} --dict-src ${dic_src}
 
 # remove uttterance id
-perl -pe 's/\([^\)]+\)//g;' ${dir}/ref.trn.org.${tgt_lang} > ${dir}/ref.trn.${tgt_lang}
-perl -pe 's/\([^\)]+\)//g;' ${dir}/hyp.trn.org.${tgt_lang} > ${dir}/hyp.trn.${tgt_lang}
-perl -pe 's/\([^\)]+\)//g;' ${dir}/src.trn.org.${tgt_lang} > ${dir}/src.trn.${tgt_lang}
+perl -pe 's/\([^\)]+\)\n/\n/g;' ${dir}/ref.trn.org.${tgt_lang} > ${dir}/ref.trn.${tgt_lang}
+perl -pe 's/\([^\)]+\)\n/\n/g;' ${dir}/hyp.trn.org.${tgt_lang} > ${dir}/hyp.trn.${tgt_lang}
+perl -pe 's/\([^\)]+\)\n/\n/g;' ${dir}/src.trn.org.${tgt_lang} > ${dir}/src.trn.${tgt_lang}
 
 if [ -n "$bpe" ]; then
     spm_decode --model=${bpemodel} --input_format=piece < ${dir}/ref.trn.${tgt_lang} | sed -e "s/▁/ /g" > ${dir}/ref.wrd.trn.${tgt_lang}

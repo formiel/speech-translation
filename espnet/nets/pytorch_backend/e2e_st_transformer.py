@@ -148,7 +148,7 @@ class E2E(STInterface, torch.nn.Module):
         # one-to-many models parameters
         self.use_joint_dict = getattr(args, "use_joint_dict", True)
         self.one_to_many = getattr(args, "one_to_many", False)
-        self.use_lid = getattr(args, "use_lid", False)
+        self.use_lid = getattr(args, "use_lid", True)
         if self.use_joint_dict:
             self.langs_dict = getattr(args, "langs_dict_tgt", None)
         self.lang_tok = getattr(args, "lang_tok", None)
@@ -539,7 +539,7 @@ class E2E(STInterface, torch.nn.Module):
 
         # preprare sos
         y = self.sos_src
-        if self.one_to_many and self.lang_tok == 'decoder-pre':
+        if self.use_lid and self.lang_tok == 'decoder-pre':
             src_lang_id = '<2{}>'.format(recog_args.config.split('.')[-2].split('-')[0])
             y = char_list.index(src_lang_id)
             logging.info(f'src_lang_id: {src_lang_id} - y: {y}')
@@ -717,7 +717,7 @@ class E2E(STInterface, torch.nn.Module):
         else:
             y = self.sos_tgt
 
-        if self.one_to_many and self.lang_tok == 'decoder-pre':
+        if self.use_lid and self.lang_tok == 'decoder-pre':
             tgt_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[-1])
             y = char_list.index(tgt_lang_id)
             logging.info(f'tgt_lang_id: {tgt_lang_id} - y: {y}')
@@ -1142,7 +1142,7 @@ class E2E(STInterface, torch.nn.Module):
         else:
             y = self.sos_tgt
 
-        if self.one_to_many and self.lang_tok == 'decoder-pre':
+        if self.use_lid and self.lang_tok == 'decoder-pre':
             tgt_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[-1])
             y = char_list_tgt.index(tgt_lang_id)
             logging.info(f'tgt_lang_id: {tgt_lang_id} - y: {y}')

@@ -488,7 +488,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         logging.info(f'use_rev_triu_width: {use_rev_triu_width}')
         logging.info(f'use_diag: {use_diag}')
 
-        if self.one_to_many and self.lang_tok == 'decoder-pre':
+        if self.use_lid and self.lang_tok == 'decoder-pre':
             tgt_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[-1])
             y = char_list_tgt.index(tgt_lang_id)
             logging.info(f'tgt_lang_id: {tgt_lang_id} - y: {y}')

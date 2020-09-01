@@ -41,3 +41,4 @@ egs/must_c/st_multilingual/run-decode2.sh
 egs/must_c/st_multilingual/check_selection.py
 egs/must_c/st_multilingual/run-decode-*.sh
 egs/must_c/st_multilingual/_NOTES_*
+egs/must_c/st_multilingual/modify_fpath_ha.py

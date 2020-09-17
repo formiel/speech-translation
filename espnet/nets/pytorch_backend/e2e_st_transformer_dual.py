@@ -159,7 +159,8 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
 
         # Check parameters
         if self.one_to_many:
-            assert self.use_lid
+            # assert self.use_lid
+            self.use_lid = True
         if self.cross_operator == 'sum' and self.cross_weight <= 0:
             assert (not self.cross_to_asr) and (not self.cross_to_st)
         if self.cross_to_asr or self.cross_to_st:

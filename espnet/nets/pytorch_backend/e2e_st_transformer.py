@@ -148,7 +148,7 @@ class E2E(STInterface, torch.nn.Module):
         # one-to-many models parameters
         self.use_joint_dict = getattr(args, "use_joint_dict", True)
         self.one_to_many = getattr(args, "one_to_many", False)
-        self.use_lid = getattr(args, "use_lid", True)
+        self.use_lid = getattr(args, "use_lid", False)
         if self.use_joint_dict:
             self.langs_dict = getattr(args, "langs_dict_tgt", None)
         self.lang_tok = getattr(args, "lang_tok", None)
@@ -170,7 +170,8 @@ class E2E(STInterface, torch.nn.Module):
 
         # Check parameters
         if self.one_to_many:
-            assert self.use_lid
+            # assert self.use_lid
+            self.use_lid = True
         if self.cross_operator and 'sum' in self.cross_operator and self.cross_weight <= 0:
             assert (not self.cross_to_asr) and (not self.cross_to_st)
         if self.cross_to_asr or self.cross_to_st:
@@ -597,6 +598,8 @@ class E2E(STInterface, torch.nn.Module):
                     local_att_scores = traced_decoder(ys, ys_mask, enc_output)[0]
                 else:
                     local_att_scores = self.decoder_asr.forward_one_step(ys, ys_mask, enc_output)[0]
+                if not self.use_joint_dict:
+                    local_att_scores = self.output_layer_asr(local_att_scores)
 
                 if rnnlm:
                     rnnlm_state, local_lm_scores = rnnlm.predict(hyp['rnnlm_prev'], vy)
@@ -773,6 +776,8 @@ class E2E(STInterface, torch.nn.Module):
                     local_att_scores = traced_decoder(ys, ys_mask, enc_output)[0]
                 else:
                     local_att_scores = self.decoder.forward_one_step(ys, ys_mask, enc_output)[0]
+                if not self.use_joint_dict:
+                    local_att_scores = self.output_layer(local_att_scores)
 
                 if rnnlm:
                     rnnlm_state, local_lm_scores = rnnlm.predict(hyp['rnnlm_prev'], vy)

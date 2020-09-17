@@ -34,11 +34,10 @@ egs/must_c/st_multilingual/run-train-lig.sh
 egs/must_c/st_multilingual/create_histogram.py
 egs/must_c/st_multilingual/create_symlinks_tb.py
 egs/must_c/st_multilingual/conf/decoding_after/*
-egs/must_c/st_multilingual/run-decode.sh
-egs/must_c/st_multilingual/run-tmp.sh
-egs/must_c/st_multilingual/run-decode-tmp.sh
-egs/must_c/st_multilingual/run-decode2.sh
+egs/must_c/st_multilingual/run-*
 egs/must_c/st_multilingual/check_selection.py
-egs/must_c/st_multilingual/run-decode-*.sh
 egs/must_c/st_multilingual/_NOTES_*
 egs/must_c/st_multilingual/modify_fpath_ha.py
+egs/must_c/st_multilingual/step3_training.sh
+egs/must_c/st1/submit*
+*_org.py

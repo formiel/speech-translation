@@ -7,6 +7,7 @@
 """Decoder definition."""
 
 import torch
+from torch import nn
 import logging
 
 from espnet.nets.pytorch_backend.transformer.attention import MultiHeadedAttention
@@ -17,6 +18,7 @@ from espnet.nets.pytorch_backend.transformer.mask import subsequent_mask
 from espnet.nets.pytorch_backend.transformer.positionwise_feed_forward import PositionwiseFeedForward
 from espnet.nets.pytorch_backend.transformer.repeat import repeat
 from espnet.nets.scorer_interface import ScorerInterface
+from espnet.nets.pytorch_backend.transformer.adapter import Adapter
 
 
 class Decoder(ScorerInterface, torch.nn.Module):
@@ -55,7 +57,9 @@ class Decoder(ScorerInterface, torch.nn.Module):
                  cross_operator=None,
                  cross_shared=False,
                  cross_weight_learnable=False,
-                 cross_weight=0.0):
+                 cross_weight=0.0,
+                 adapter_names=None,
+                 ):
         """Construct an Decoder object."""
         torch.nn.Module.__init__(self)
         if input_layer == "embed":
@@ -100,6 +104,15 @@ class Decoder(ScorerInterface, torch.nn.Module):
                 cross_operator = 'sum'
             else:
                 raise NotImplementedError
+        
+        self.adapter_names = adapter_names
+        adapters = None
+        if adapter_names:
+            adapters = nn.ModuleDict(
+                {
+                    k: Adapter(attention_dim) for k in adapter_names
+                }
+            )
 
         self.decoders = repeat(
             num_blocks,
@@ -116,7 +129,8 @@ class Decoder(ScorerInterface, torch.nn.Module):
                 cross_operator=cross_operator,
                 cross_shared=cross_shared,
                 cross_weight_learnable=cross_weight_learnable,
-                cross_weight=cross_weight
+                cross_weight=cross_weight,
+                adapters=adapters,
             )
         )
 
@@ -146,10 +160,16 @@ class Decoder(ScorerInterface, torch.nn.Module):
         :rtype: torch.Tensor
         """
         x = self.embed(tgt)
+        if self.adapter_names:
+            # lang_id = str(tgt[:, 0:1][0].cpu().detach().numpy()[0])
+            lang_id = str(tgt[:, 0:1][0].item())
+        else:
+            lang_id = None
         x, tgt_mask, memory, memory_mask, _, _, _, _ = self.decoders(x, tgt_mask, 
                                                                     memory, memory_mask, 
                                                                     cross, cross_mask, 
-                                                                    cross_self, cross_src)
+                                                                    cross_self, cross_src,
+                                                                    lang_id)
         if self.normalize_before:
             x = self.after_norm(x)
         if self.output_layer is not None:

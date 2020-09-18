@@ -28,17 +28,28 @@ class DecoderLayer(nn.Module):
 
     """
 
-    def __init__(self, size, self_attn, src_attn, feed_forward, dropout_rate,
-                 normalize_before=True, concat_after=False, 
-                 cross_self_attn=None, cross_src_attn=None, 
-                 cross_operator=None, cross_shared=False,
-                 cross_weight_learnable=False, cross_weight=0.0):
+    def __init__(self, size, 
+                 self_attn, 
+                 src_attn, 
+                 feed_forward, 
+                 dropout_rate,
+                 normalize_before=True, 
+                 concat_after=False, 
+                 cross_self_attn=None, 
+                 cross_src_attn=None, 
+                 cross_operator=None, 
+                 cross_shared=False,
+                 cross_weight_learnable=False, 
+                 cross_weight=0.0,
+                 adapters=None,
+                 ):
         """Construct an DecoderLayer object."""
         super(DecoderLayer, self).__init__()
         self.size = size
         self.self_attn = self_attn
         self.src_attn = src_attn
         self.feed_forward = feed_forward
+        self.adapters = adapters
         if not cross_shared and cross_self_attn is not None and cross_src_attn is not None:
             self.cross_self_attn = cross_self_attn
             self.cross_src_attn = cross_src_attn
@@ -76,7 +87,11 @@ class DecoderLayer(nn.Module):
             self.concat_linear1 = nn.Linear(size + size, size)
             self.concat_linear2 = nn.Linear(size + size, size)
 
-    def forward(self, tgt, tgt_mask, memory, memory_mask, cross=None, cross_mask=None, cross_self=False, cross_src=False, cache=None):
+    def forward(self, tgt, tgt_mask, 
+                memory, memory_mask, 
+                cross=None, cross_mask=None, 
+                cross_self=False, cross_src=False, 
+                lang_id=None, cache=None):
         """Compute decoded features.
 
         Args:
@@ -175,6 +190,10 @@ class DecoderLayer(nn.Module):
         x = residual + self.dropout(self.feed_forward(x))
         if not self.normalize_before:
             x = self.norm3(x)
+
+        # Adapters
+        if lang_id is not None and self.adapters is not None:
+            x = self.adapters[lang_id](x, x)[0]
 
         if cache is not None:
             x = torch.cat([cache, x], dim=1)

@@ -1,7 +1,6 @@
-# Copyright 2019 Hirofumi Inaguma
-#  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
+# Copyright 2019 Hang Le (hangtp.le@gmail.com)
 
-"""Transformer speech recognition model (pytorch)."""
+"""Transformer speech translation model (pytorch)."""
 
 from argparse import Namespace
 from distutils.util import strtobool
@@ -201,6 +200,13 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         if (self.cross_self_from != "embedding" and self.cross_self) and (not self.normalize_before):
             logging.warning(f'WARNING: Resort to using self.cross_self_from == embedding for cross at self attention.')
         
+        # Adapters
+        adapter_names = getattr(args, "adapters", None)
+        # convert target language tokens to ids
+        if adapter_names:
+            adapter_names = [str(args.char_list_tgt.index(f'<2{l}>')) for l in adapter_names]
+        logging.info(f'| adapters = {adapter_names}')
+
         self.encoder = Encoder(
             idim=idim,
             attention_dim=args.adim,
@@ -212,12 +218,6 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
             positional_dropout_rate=args.dropout_rate,
             attention_dropout_rate=args.transformer_attn_dropout_rate
         )
-
-        adapter_names = getattr(args, "adapters", None)
-        # convert target language tokens to ids
-        if adapter_names:
-            adapter_names = [str(args.char_list_tgt.index(f'<2{l}>')) for l in adapter_names]
-        logging.info(f'| adapters = {adapter_names}')
 
         self.dual_decoder = DualDecoder(
                 odim_tgt,

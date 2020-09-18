@@ -211,6 +211,13 @@ class E2E(STInterface, torch.nn.Module):
         if (self.cross_self_from != "embedding" and self.cross_self) and (not self.normalize_before):
             logging.warning(f'WARNING: Resort to using self.cross_self_from == embedding for cross at self attention.')
 
+        # Adapters
+        adapter_names = getattr(args, "adapters", None)
+        # convert target language tokens to ids
+        if adapter_names:
+            adapter_names = [str(args.char_list_tgt.index(f'<2{l}>')) for l in adapter_names]
+        logging.info(f'| adapters = {adapter_names}')
+
         self.encoder = Encoder(
             idim=idim,
             attention_dim=args.adim,

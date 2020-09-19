@@ -313,10 +313,11 @@ def train(args):
     logging.info(f'| use_joint_dict = {args.use_joint_dict}')
     logging.info(f'| use_lid = {args.use_lid}')
 
+    # adapters
     if args.use_adapters:
         args.adapters = [l for l in tgt_langs]
 
-    # Prepare language ID tokens for one-to-many systems 
+    # prepare language ID tokens for one-to-many systems 
     if args.use_lid:
         if args.use_joint_dict:
             all_langs = list(sorted(set([l for p in lang_pairs for l in p.split('-')])))
@@ -374,7 +375,7 @@ def train(args):
     logging.info(f'| Number of model parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}')
 
     subsampling_factor = model.subsample[0]
-    logging.info(f'subsampling_factor={subsampling_factor}')
+    logging.info(f'subsampling_factor = {subsampling_factor}')
 
     if args.rnnlm is not None:
         rnnlm_args = get_model_conf(args.rnnlm, args.rnnlm_conf)
@@ -422,13 +423,13 @@ def train(args):
         for n, p in model.named_parameters():
             if "adapters" in n:
                 p.requires_grad = True
-        print('*'*50 + '\nTrainable parameters include:')
+        logging.info('***** Trainable parameters *****')
         for n, p in model.named_parameters():
             if p.requires_grad:
-                print(n)
+                logging.info(f'- {n}')
 
-    n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print('Number of trainable params:', n_parameters)
+    num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    logging.info(f'Number of trainable params: {num_params}')
 
     model = model.to(device=device, dtype=dtype)
 

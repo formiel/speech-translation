@@ -53,8 +53,6 @@ def get_parser(parser=None, required=True):
                         help='Output directory')
     parser.add_argument('--debugmode', default=1, type=int,
                         help='Debugmode')
-    # parser.add_argument('--dict', required=required,
-    #                     help='Dictionary')
     parser.add_argument('--dict-src', required=required,
                         help='Source dictionary')
     parser.add_argument('--dict-tgt', required=required,
@@ -241,8 +239,7 @@ def get_parser(parser=None, required=True):
     parser.add_argument('--cross-self-from', default='embedding', type=str, choices=['embedding', 'before-self'],
                         help='Where to take key and value of the cross decoder.')
     parser.add_argument('--cross-shared', default=False, type=strtobool,
-                        help='Cross shared weights.')    
-
+                        help='Cross shared weights.')
     # Feature transform: Normalization
     parser.add_argument('--stats-file', type=str, default=None,
                         help='The stats file for the feature normalization')
@@ -389,7 +386,6 @@ def main(cmd_args):
 
     if args.backend == "pytorch":
         from espnet.st.pytorch_backend.st import train
-        logging.info('Start training...')
         train(args)
     else:
         raise ValueError("Only pytorch are supported.")

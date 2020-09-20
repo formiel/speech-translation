@@ -44,6 +44,7 @@ st_model=
 # training related
 preprocess_config=
 use_adapters=                # if true, use adapter for fine-tuning
+train_adapters=              # if true, train adapter from scratch
 
 # preprocessing related
 src_case=lc.rm              # lc.rm: lowercase with punctuation removal
@@ -92,7 +93,11 @@ if (( $lang_count != 1 )); then
     if (( $lang_count == 8 )); then
         suffix="lgs_all8"
     else
-        suffix="lgs_${tgt_langs}"
+        if [[ ${train_adapters} == "true" ]]; then
+            suffix="lgs_all8"
+        else
+            suffix="lgs_${tgt_langs}"
+        fi
     fi
 elif (( $lang_count == 1 )); then
     suffix="lgs_${tgt_langs}_id_${use_lid}"
@@ -138,6 +143,11 @@ set -o pipefail
 # Train, dev, and translation sets
 train_set=train_sp.en-${tgt_langs}
 train_dev=dev.en-${tgt_langs}
+train_set_dict=${train_set}
+train_dev_dict=${train_dev}
+if [[ ${train_adapters} == "true" ]]; then
+    train_set_dict=train_sp.en-de_es_fr_it_nl_pt_ro_ru
+fi
 
 if [[ -z ${trans_set} ]]; then
     trans_set=""
@@ -559,13 +569,13 @@ else
 fi
 
 if [[ ${use_joint_dict} == "true" ]]; then
-    dname=${train_set}_${bpemode}${nbpe}_${tgt_case}_${suffix}
+    dname=${train_set_dict}_${bpemode}${nbpe}_${tgt_case}_${suffix}
     dict_tgt=${datadir}/lang_1spm/${dname}.txt
     dict_src=${datadir}/lang_1spm/${dname}.txt
     bpemodel_tgt=data/lang_1spm/use_${dprefix}/${dname}
     bpemodel_src=data/lang_1spm/use_${dprefix}/${dname}
 else
-    dname=${train_set}_${bpemode}_src${nbpe_src}${src_case}_tgt${nbpe}${tgt_case}_${suffix}
+    dname=${train_set_dict}_${bpemode}_src${nbpe_src}${src_case}_tgt${nbpe}${tgt_case}_${suffix}
     dict_tgt=${datadir}/lang_1spm/${dname}.tgt.txt
     dict_src=${datadir}/lang_1spm/${dname}.src.txt
     bpemodel_tgt=data/lang_1spm/use_${dprefix}/${dname}.tgt
@@ -620,6 +630,7 @@ if [[ ${stage} -le 4 ]] && [[ ${stop_stage} -ge 4 ]]; then
         --train-json ${train_json_dir} \
         --valid-json ${val_json_dir} \
         --use-adapters ${use_adapters} \
+        --train-adapters ${train_adapters} \
         --use-lid ${use_lid}
         # --enc-init ${asr_model} \
         # --dec-init ${st_model}

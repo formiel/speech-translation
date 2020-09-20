@@ -215,6 +215,8 @@ def get_parser(parser=None, required=True):
                         help='Number of decoders in multilingual ST.')
     parser.add_argument('--use-adapters', default=False, type=strtobool,
                         help='Use adapters for fine-tuning pre-trained model')
+    parser.add_argument('--train-adapters', default=False, type=strtobool,
+                        help='Train adapters from scratch')
     # Dual attention related
     parser.add_argument('--cross-weight', default=0.0, type=float,
                         help='Weight decay ratio')

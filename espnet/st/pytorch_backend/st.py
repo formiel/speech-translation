@@ -304,13 +304,17 @@ def train(args):
     if not torch.cuda.is_available():
         logging.warning('cuda is not available')
 
-    # get paths to data
-    lang_pairs = sorted(args.lang_pairs.split(','))
+    # language pairs
+    lang_pairs = args.lang_pairs if not args.train_adapters else \
+                            "en-de,en-es,en-fr,en-it,en-nl,en-pt,en-ro,en-ru"
+    lang_pairs = sorted(lang_pairs.split(','))
     args.one_to_many = True if len(lang_pairs) > 1 else False
     if args.one_to_many:
         assert args.use_lid
     tgt_langs = sorted([p.split('-')[-1] for p in lang_pairs])
     src_lang = lang_pairs[0].split('-')[0]
+    
+    # get paths to data
     if args.one_to_many:
         train_jpaths = [os.path.join(args.train_json, fname) for fname in sorted(os.listdir(args.train_json)) if fname.endswith('.json')]
         valid_jpaths = [os.path.join(args.valid_json, fname) for fname in sorted(os.listdir(args.valid_json)) if fname.endswith('.json')]
@@ -318,14 +322,7 @@ def train(args):
         train_jpaths = [args.train_json]
         valid_jpaths = [args.valid_json]
     logging.info(f'| train_jpaths: {train_jpaths}')
-    logging.info(f'| valid_jpaths: {valid_jpaths}')
-    logging.info(f'| lang_pairs  : {lang_pairs}')
-    logging.info(f'| use_joint_dict = {args.use_joint_dict}')
-    logging.info(f'| use_lid = {args.use_lid}')
-
-    # adapters
-    if args.use_adapters:
-        args.adapters = [l for l in tgt_langs]
+    logging.info(f'| valid_jpaths: {valid_jpaths}')   
 
     # prepare language ID tokens for one-to-many systems 
     if args.use_lid:
@@ -367,10 +364,20 @@ def train(args):
     assert len(set(idims)) == 1; idim = idims[0]
     assert len(set(odims_tgt)) == 1; odim_tgt = odims_tgt[0]
     assert len(set(odims_src)) ==1; odim_src = odims_src[0]
-
     logging.info('#input dims : ' + str(idim))
     logging.info('#tgt output dims: ' + str(odim_tgt))
     logging.info('#src output dims: ' + str(odim_src))
+
+    # adapters
+    if args.train_adapters:
+        args.use_adapters = True
+    if args.use_adapters:
+        lang_pairs = sorted(args.lang_pairs.split(','))
+        tgt_langs = sorted([p.split('-')[-1] for p in lang_pairs])
+        args.adapters = [l for l in tgt_langs]
+    logging.info(f'| lang_pairs  : {lang_pairs}')
+    logging.info(f'| use_joint_dict = {args.use_joint_dict}')
+    logging.info(f'| use_lid = {args.use_lid}')
 
     # Initialize with pre-trained ASR encoder and MT decoder
     if args.enc_init is not None or args.dec_init is not None:
@@ -425,9 +432,9 @@ def train(args):
         dtype = getattr(torch, args.train_dtype)
     else:
         dtype = torch.float32
-    
+
     # freeze all weights except for adapters
-    if args.use_adapters:
+    if args.use_adapters and not args.train_adapters:
         for p in model.parameters():
             p.requires_grad = False
         for n, p in model.named_parameters():
@@ -763,7 +770,7 @@ def train(args):
     # Resume from a snapshot
     if args.resume:
         # logging.info('resumed from %s' % args.resume)
-        torch_resume(args.resume, trainer, reset_optimizer=args.use_adapters)
+        torch_resume(args.resume, trainer, reset_optimizer=args.use_adapters and not args.train_adapters)
         # torch_resume(args.resume, trainer)
 
     # Run the training

@@ -9,7 +9,9 @@
 import copy
 import json
 import logging
+import numpy as np
 import os
+import random
 import sys
 import shutil
 import warnings
@@ -17,6 +19,9 @@ import six
 import time
 import multiprocessing
 from collections import deque
+
+from tensorboardX import SummaryWriter
+import torch
 
 from chainer import training
 from chainer import reporter
@@ -26,10 +31,6 @@ from chainer.training import util, extension
 from chainer import serializer as serializer_module
 from chainer.training import trigger as trigger_module
 from chainer.utils import argument
-
-import numpy as np
-from tensorboardX import SummaryWriter
-import torch
 
 from espnet.asr.asr_utils import adadelta_eps_decay
 from espnet.asr.asr_utils import adam_lr_decay
@@ -240,6 +241,12 @@ def cycle(iterable):
         for i in iterable:
             yield i
 
+
+def shuffle_batches(batches_list):
+    indices = [i for i in range(len(batches_list))]
+    random.shuffle(indices)
+    return [batches_list[i] for i in indices]
+    
 
 class CustomConverter(ASRCustomConverter):
     """Custom batch converter for Pytorch.
@@ -478,29 +485,36 @@ def train(args):
     for i, jpath in enumerate(train_jpaths):
         with open(jpath, 'rb') as f:
             train_json = json.load(f)['utts']
-            train_all_pairs[i] = make_batchset(train_json, batch_size,
-                        args.maxlen_in, args.maxlen_out, args.minibatches,
-                        min_batch_size=1,
-                        shortest_first=use_sortagrad,
-                        count=args.batch_count,
-                        batch_bins=args.batch_bins,
-                        batch_frames_in=args.batch_frames_in,
-                        batch_frames_out=args.batch_frames_out,
-                        batch_frames_inout=args.batch_frames_inout)
-            
+            train_all_pairs[i] = shuffle_batches(
+                    make_batchset(train_json, batch_size,
+                            args.maxlen_in, args.maxlen_out, args.minibatches,
+                            min_batch_size=1,
+                            shortest_first=use_sortagrad,
+                            count=args.batch_count,
+                            batch_bins=args.batch_bins,
+                            batch_frames_in=args.batch_frames_in,
+                            batch_frames_out=args.batch_frames_out,
+                            batch_frames_inout=args.batch_frames_inout)
+            )            
     for i, jpath in enumerate(valid_jpaths):
         with open(jpath, 'rb') as f:
             valid_json = json.load(f)['utts']
-            valid_all_pairs[i] = make_batchset(valid_json, batch_size,
-                        args.maxlen_in, args.maxlen_out, args.minibatches,
-                        min_batch_size=1,
-                        count=args.batch_count,
-                        batch_bins=args.batch_bins,
-                        batch_frames_in=args.batch_frames_in,
-                        batch_frames_out=args.batch_frames_out,
-                        batch_frames_inout=args.batch_frames_inout)
+            valid_all_pairs[i] = shuffle_batches(
+                    make_batchset(valid_json, batch_size,
+                            args.maxlen_in, args.maxlen_out, args.minibatches,
+                            min_batch_size=1,
+                            count=args.batch_count,
+                            batch_bins=args.batch_bins,
+                            batch_frames_in=args.batch_frames_in,
+                            batch_frames_out=args.batch_frames_out,
+                            batch_frames_inout=args.batch_frames_inout)
+            )
 
     if num_langs > 1:
+        cycle_train = [cycle(x) for x in train_all_pairs]
+        cycle_valid = [cycle(x) for x in valid_all_pairs]
+        num_batches_train = max(len(i) for i in train_all_pairs)
+        num_batches_valid = max(len(i) for i in valid_all_pairs)
         if not args.use_adapters:
             cycle_train = [cycle(x) for x in train_all_pairs]
             cycle_valid = [cycle(x) for x in valid_all_pairs]
@@ -525,11 +539,36 @@ def train(args):
                 if i >= num_batches_valid - 1:
                     break
         else:
-            train = [lg_mini for lg_all_batches in train_all_pairs for lg_mini in lg_all_batches]
-            valid = [lg_mini for lg_all_batches in valid_all_pairs for lg_mini in lg_all_batches]
+            train = []
+            valid = []
+            for i, s in enumerate(zip(*cycle_train)):
+                for y in s:
+                    train.append(y)
+                if i >= num_batches_train - 1:
+                    break
+            for i, s in enumerate(zip(*cycle_valid)):
+                for y in s:
+                    valid.append(y)
+                if i >= num_batches_valid - 1:
+                    break
     else:
         train = train_all_pairs[0]
         valid = valid_all_pairs[0]
+    
+    # print(f'Debugging ...')
+    # n = len(train)
+    # n_samples = 0
+    # for i, batch in enumerate(train):
+    #     print(f'batch {i}/{n}')
+    #     m = len(batch)
+    #     n_tokens = 0
+    #     for j, sample in enumerate(batch):
+    #         print(f'sample {j}/{m}: {sample[1]["lang"]}, {sample[1]["input"][0]["shape"][0]}')
+    #         n_samples += 1
+    #         n_tokens += sample[1]["input"][0]["shape"][0]
+    #     print(f'Total number of tokens in batch: {n_tokens}')
+    # print(f'Total number of training samples: {n_samples}') 
+    # return
 
     load_tr = LoadInputsAndTargets(
         mode='asr', load_output=True, preprocess_conf=args.preprocess_conf,
@@ -726,8 +765,9 @@ def train(args):
     
     # Resume from a snapshot
     if args.resume:
-        logging.info('resumed from %s' % args.resume)
+        # logging.info('resumed from %s' % args.resume)
         torch_resume(args.resume, trainer, reset_optimizer=args.use_adapters)
+        # torch_resume(args.resume, trainer)
 
     # Run the training
     trainer.run()

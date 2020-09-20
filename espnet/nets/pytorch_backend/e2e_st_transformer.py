@@ -246,6 +246,7 @@ class E2E(STInterface, torch.nn.Module):
             cross_weight_learnable=self.cross_weight_learnable,
             cross_weight=self.cross_weight,
             use_output_layer=True if self.use_joint_dict else False,
+            adapter_names=adapter_names,
         )
 
         if self.do_asr:

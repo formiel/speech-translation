@@ -295,6 +295,7 @@ def main(cmd_args):
     model_class.add_arguments(parser)
 
     args = parser.parse_args(cmd_args)
+    args.start_time = time.time()
 
     args.model_module = model_module
     if 'chainer_backend' in args.model_module:

@@ -176,6 +176,7 @@ class CustomUpdater(StandardUpdater):
 
         # Get the next batch (a list of json files)
         batch = train_iter.next()
+        logging.info(f'total src tokens: {sum(batch[1])}')
         # self.iteration += 1 # Increase may result in early report, which is done in other place automatically.
         x = _recursive_to(batch, self.device)
         is_new_epoch = train_iter.epoch != epoch

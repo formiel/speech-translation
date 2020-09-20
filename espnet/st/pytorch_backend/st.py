@@ -242,10 +242,13 @@ def cycle(iterable):
             yield i
 
 
-def shuffle_batches(batches_list):
-    indices = [i for i in range(len(batches_list))]
-    random.shuffle(indices)
-    return [batches_list[i] for i in indices]
+def shuffle_batches(batches_list, shuffle=True):
+    if shuffle:
+        indices = [i for i in range(len(batches_list))]
+        random.shuffle(indices)
+        return [batches_list[i] for i in indices]
+    else:
+        return batches_list
     
 
 class CustomConverter(ASRCustomConverter):
@@ -485,8 +488,7 @@ def train(args):
     for i, jpath in enumerate(train_jpaths):
         with open(jpath, 'rb') as f:
             train_json = json.load(f)['utts']
-            train_all_pairs[i] = shuffle_batches(
-                    make_batchset(train_json, batch_size,
+            train_all_pairs[i] = make_batchset(train_json, batch_size,
                             args.maxlen_in, args.maxlen_out, args.minibatches,
                             min_batch_size=1,
                             shortest_first=use_sortagrad,
@@ -494,13 +496,11 @@ def train(args):
                             batch_bins=args.batch_bins,
                             batch_frames_in=args.batch_frames_in,
                             batch_frames_out=args.batch_frames_out,
-                            batch_frames_inout=args.batch_frames_inout)
-            )            
+                            batch_frames_inout=args.batch_frames_inout)         
     for i, jpath in enumerate(valid_jpaths):
         with open(jpath, 'rb') as f:
             valid_json = json.load(f)['utts']
-            valid_all_pairs[i] = shuffle_batches(
-                    make_batchset(valid_json, batch_size,
+            valid_all_pairs[i] = make_batchset(valid_json, batch_size,
                             args.maxlen_in, args.maxlen_out, args.minibatches,
                             min_batch_size=1,
                             count=args.batch_count,
@@ -508,7 +508,6 @@ def train(args):
                             batch_frames_in=args.batch_frames_in,
                             batch_frames_out=args.batch_frames_out,
                             batch_frames_inout=args.batch_frames_inout)
-            )
 
     if num_langs > 1:
         cycle_train = [cycle(x) for x in train_all_pairs]
@@ -555,20 +554,18 @@ def train(args):
         train = train_all_pairs[0]
         valid = valid_all_pairs[0]
     
-    # print(f'Debugging ...')
     # n = len(train)
     # n_samples = 0
     # for i, batch in enumerate(train):
-    #     print(f'batch {i}/{n}')
+    #     logging.info(f'batch {i}/{n}')
     #     m = len(batch)
     #     n_tokens = 0
     #     for j, sample in enumerate(batch):
-    #         print(f'sample {j}/{m}: {sample[1]["lang"]}, {sample[1]["input"][0]["shape"][0]}')
+    #         logging.info(f'sample {j}/{m}: {sample[1]["lang"]}, {sample[1]["input"][0]["shape"][0]}')
     #         n_samples += 1
     #         n_tokens += sample[1]["input"][0]["shape"][0]
-    #     print(f'Total number of tokens in batch: {n_tokens}')
-    # print(f'Total number of training samples: {n_samples}') 
-    # return
+    #     logging.info(f'Total number of tokens in batch: {n_tokens}')
+    # logging.info(f'Total number of training samples: {n_samples}')
 
     load_tr = LoadInputsAndTargets(
         mode='asr', load_output=True, preprocess_conf=args.preprocess_conf,

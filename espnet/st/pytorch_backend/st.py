@@ -646,16 +646,16 @@ def train(args):
     else:
         att_reporter = None
 
-    # Make a plot for training and validation values
-    trainer.extend(extensions.PlotReport(['main/loss', 'validation/main/loss',
-                                          'main/loss_asr', 'validation/main/loss_asr',
-                                          'main/loss_st', 'validation/main/loss_st'],
-                                         'epoch', file_name='loss.png'))
-    trainer.extend(extensions.PlotReport(['main/acc', 'validation/main/acc',
-                                          'main/acc_asr', 'validation/main/acc_asr'],
-                                         'epoch', file_name='acc.png'))
-    trainer.extend(extensions.PlotReport(['main/bleu', 'validation/main/bleu'],
-                                         'epoch', file_name='bleu.png'))
+    # # Make a plot for training and validation values
+    # trainer.extend(extensions.PlotReport(['main/loss', 'validation/main/loss',
+    #                                       'main/loss_asr', 'validation/main/loss_asr',
+    #                                       'main/loss_st', 'validation/main/loss_st'],
+    #                                      'epoch', file_name='loss.png'))
+    # trainer.extend(extensions.PlotReport(['main/acc', 'validation/main/acc',
+    #                                       'main/acc_asr', 'validation/main/acc_asr'],
+    #                                      'epoch', file_name='acc.png'))
+    # trainer.extend(extensions.PlotReport(['main/bleu', 'validation/main/bleu'],
+    #                                      'epoch', file_name='bleu.png'))
 
     # Save best models
     if args.report_interval_iters > 0:

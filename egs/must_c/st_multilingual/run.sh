@@ -565,7 +565,11 @@ if [[ ${train_adapters} == "true" ]]; then
     fi
 fi
 if (( $lang_count == 1 )); then
-    datadir=${datadir}/use_lid_${use_lid}
+    if [[ ${train_adapters} == "true" ]]; then
+        datadir=${datadir}
+    else
+        datadir=${datadir}/use_lid_${use_lid}
+    fi
     train_json_dir=${datadir}/train_sp/en-${tgt_langs}.json
     val_json_dir=${datadir}/dev/en-${tgt_langs}.json 
 else

@@ -41,3 +41,4 @@ egs/must_c/st_multilingual/modify_fpath_ha.py
 egs/must_c/st_multilingual/step3_training.sh
 egs/must_c/st1/submit*
 *_org.py
+egs/must_c/st_multilingual/create_report_after.py

@@ -274,7 +274,7 @@ def main(cmd_args):
     args, _ = parser.parse_known_args(cmd_args)
     lang_pairs = args.lang_pairs.split(',')
 
-    if len(lang_pairs) > 1:
+    if len(lang_pairs) > 1 or args.train_adapters:
         assert os.path.isdir(args.train_json)
         assert os.path.isdir(args.valid_json)
     else:

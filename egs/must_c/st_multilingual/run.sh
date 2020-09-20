@@ -35,13 +35,13 @@ tgt_langs=
 # you can choose from de, es, fr, it, nl, pt, ro, ru
 # To train the multilingual model, segment languages with _ as follows:
 # e.g., tgt_lang="de_es_fr"
-use_lid=true         # can be set to false (not use language id) for bilingual systems
+use_lid=true         # if false then not use language id (for bilingual systems)
 
 # pre-training related
 asr_model=
 st_model=
 
-# training related
+# training and adapters related
 preprocess_config=
 use_adapters=                # if true, use adapter for fine-tuning
 train_adapters=              # if true, train adapter from scratch
@@ -73,6 +73,9 @@ tag="" # tag for managing experiments.
 
 . utils/parse_options.sh || exit 1;
 
+# training configuration
+train_config=${train_config_dir}/${tag}.yaml
+
 # Language related parameters
 tgt_langs=$(echo "$tgt_langs" | tr '_' '\n' | sort | tr '\n' '_')
 tgt_langs=$(echo ${tgt_langs::-1})
@@ -83,31 +86,29 @@ for lang in $(echo ${tgt_langs} | tr '_' ' '); do
     lang_count=$((lang_count + 1))
 done
 lang_pairs=$(echo ${lang_pairs::-1})
-# Force using language ID if there is more than 1 target languages
+
+# use language ID if there is more than 1 target languages
 if (( $lang_count != 1 )); then
     use_lid=true
 fi
 
-# suffix for dictionaries
-if (( $lang_count != 1 )); then
-    if (( $lang_count == 8 )); then
-        suffix="lgs_all8"
-    else
-        suffix="lgs_${tgt_langs}"
-    fi
-elif (( $lang_count == 1 )); then
-    suffix="lgs_${tgt_langs}_id_${use_lid}"
-fi
-if [[ ${train_adapters} == "true" ]]; then
-    suffix="lgs_all8"
-fi
-
-# training configuration
-train_config=${train_config_dir}/${tag}.yaml
+# prefix for dictionaries
 if [[ ${use_joint_dict} == "true" ]]; then
     dprefix="dict1"
 else
     dprefix="dict2"
+fi
+
+# suffix for dictionaries
+if (( $lang_count == 8 )); then
+    suffix="lgs_all8"
+elif (( $lang_count == 1 )); then
+    suffix="lgs_${tgt_langs}_id_${use_lid}"
+else
+    suffix="lgs_${tgt_langs}"
+fi
+if [[ ${train_adapters} == "true" ]]; then
+    suffix="lgs_all8"
 fi
 
 echo "*** General parameters ***"
@@ -123,6 +124,8 @@ echo "| nbpe_src: ${nbpe_src}"
 echo "| dictionary prefix: ${dprefix}"
 echo "| dictionary suffix: ${suffix}"
 echo "| use language ID: ${use_lid}"
+echo "| use adapters: ${use_adapters}"
+echo "| train adapters: ${train_adapters}"
 echo "| train_config: ${train_config}"
 echo "| preprocess_config: ${preprocess_config}"
 echo "| pre-trained weights for encoder: ${asr_model}"
@@ -142,6 +145,7 @@ set -o pipefail
 # Train, dev, and translation sets
 train_set=train_sp.en-${tgt_langs}
 train_dev=dev.en-${tgt_langs}
+
 train_set_dict=${train_set}
 train_dev_dict=${train_dev}
 if [[ ${train_adapters} == "true" ]]; then
@@ -556,7 +560,7 @@ mkdir -p ${expdir}
 echo "| expdir: ${expdir}"
 echo "| tensorboard_dir: ${tensorboard_dir}"
 
-# Data input folders
+# Data folders
 datadir_tmp=${datadir}
 datadir=${datadir_tmp}/${tgt_langs}/use_${dprefix}/src${nbpe_src}_tgt${nbpe}
 if (( $lang_count == 1 )) && [[ ${train_adapters} == "true" ]]; then

@@ -557,13 +557,13 @@ echo "| expdir: ${expdir}"
 echo "| tensorboard_dir: ${tensorboard_dir}"
 
 # Data input folders
-datadir=${datadir}/${tgt_langs}/use_${dprefix}/src${nbpe_src}_tgt${nbpe}
+datadir_tmp=${datadir}
+datadir=${datadir_tmp}/${tgt_langs}/use_${dprefix}/src${nbpe_src}_tgt${nbpe}
 if [[ ${train_adapters} == "true" ]]; then
     if (( $lang_count == 1 )); then
-        datadir=${datadir}/${tgt_langs}_train_adapters/use_${dprefix}/src${nbpe_src}_tgt${nbpe}
+        datadir=${datadir_tmp}/${tgt_langs}_train_adapters/use_${dprefix}/src${nbpe_src}_tgt${nbpe}
     fi
 fi
-
 if (( $lang_count == 1 )); then
     datadir=${datadir}/use_lid_${use_lid}
     train_json_dir=${datadir}/train_sp/en-${tgt_langs}.json

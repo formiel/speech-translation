@@ -61,6 +61,7 @@ decode_config=    # configuration for decoding
 trans_model=      # set a model to be used for decoding e.g. 'model.acc.best'
 trans_set=        # data set to decode
 max_iter_eval=    # get best model up to this iteration
+min_iter_eval=
 
 # model average related (only for transformer)
 n_average=1                  # the number of ST models to be averaged,
@@ -675,7 +676,7 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
                 local/average_checkpoints_st.py \
                     ${opt} \
                     --max-iter-eval ${max_iter_eval} \
-                    --min-iter-eval 0 \
+                    --min-iter-eval ${min_iter_eval} \
                     --backend ${backend} \
                     --snapshots ${expdir}/results/snapshot.iter.* \
                     --out ${expdir}/results/${trans_model} \

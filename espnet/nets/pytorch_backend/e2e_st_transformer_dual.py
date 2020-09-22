@@ -95,6 +95,10 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                            help='Number of decoder layers')
         group.add_argument('--dunits', default=320, type=int,
                            help='Number of decoder hidden units')
+
+        # Adapters
+        group.add_argument('--adapter-down-sample', default=2, type=int,
+                           help='Down projection times')
         return parser
 
     @property
@@ -240,6 +244,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                 cross_to_st=self.cross_to_st,
                 use_output_layer=True if self.use_joint_dict else False,
                 adapter_names=adapter_names,
+                down_sample=args.adapter_down_sample,
         )
 
         if not self.use_joint_dict:

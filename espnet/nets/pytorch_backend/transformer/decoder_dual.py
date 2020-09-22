@@ -64,6 +64,7 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
                  cross_to_asr=True,
                  cross_to_st=True,
                  adapter_names=None,
+                 down_sample=2,
                  ):
         """Construct an Decoder object."""
         torch.nn.Module.__init__(self)
@@ -109,7 +110,7 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
         if adapter_names:
             adapters = nn.ModuleDict(
                 {
-                    k: Adapter(attention_dim) for k in adapter_names
+                    k: Adapter(attention_dim, attention_dim//down_sample) for k in adapter_names
                 }
             )
 

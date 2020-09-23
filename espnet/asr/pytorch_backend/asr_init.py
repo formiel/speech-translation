@@ -76,16 +76,20 @@ def get_partial_state_dict_dual_decoders(model_state_dict, modules):
     pretrained_keys = list(model_state_dict.keys())
     submodules = ['embed', 'after_norm', 'output_layer', 'self_attn', 'src_attn', 
                 'feed_forward', 'norm1', 'norm2', 'norm3', 'dropout']
+    do_replace = sum(["dual_decoder" in m for m in pretrained_keys]) == 0
 
     for key, value in model_state_dict.items():
         if any(key.startswith(m) for m in modules):
-            key = key.replace('decoders', 'dual_decoders')
-            if '_asr' not in key:
-                new_mod = key.replace('decoder.', 'dual_decoder.')
+            if do_replace:
+                key = key.replace('decoders', 'dual_decoders')
+                if '_asr' not in key:
+                    new_mod = key.replace('decoder.', 'dual_decoder.')
+                else:
+                    new_mod = key.replace('decoder_asr.', 'dual_decoder.')
+                    for k in submodules:
+                        new_mod = new_mod.replace(k, k+'_asr')
             else:
-                new_mod = key.replace('decoder_asr.', 'dual_decoder.')
-                for k in submodules:
-                    new_mod = new_mod.replace(k, k+'_asr')
+                new_mod = key
             new_state_dict[new_mod] = value
             new_modules += [new_mod]
 
@@ -168,19 +172,23 @@ def filter_modules_dual_decoders(model_state_dict, modules):
 
     mods_model = list(model_state_dict.keys())
     new_mods = []
+    do_replace = sum(["dual_decoder" in m for m in mods_model]) == 0
 
     # Create tuple of (k_pretrained, k_new)
     for new_mod in modules:
-        new_mod = new_mod.replace('dual_decoders', 'decoders')
-        if '_asr' not in new_mod:
-            mod = new_mod.replace('dual_decoder.', 'decoder.')
-        else:
-            mod = new_mod.replace('_asr', '').replace('dual_decoder.', 'decoder_asr.')
+        logging.info(f'new_mod: {new_mod}')
+        if do_replace:
+            new_mod = new_mod.replace('dual_decoders', 'decoders')
+            if '_asr' not in new_mod:
+                new_mod = new_mod.replace('dual_decoder.', 'decoder.')
+            else:
+                new_mod = new_mod.replace('_asr', '').replace('dual_decoder.', 'decoder_asr.')
 
-        if any(key.startswith(mod) for key in mods_model):
-            new_mods += [mod]
+        if any(key.startswith(new_mod) for key in mods_model):
+            new_mods += [new_mod]
         else:
-            incorrect_mods += [mod]
+            incorrect_mods += [new_mod]
+    logging.info(f'incorrect_mods: {incorrect_mods}')
 
     if incorrect_mods:
         logging.warning("module(s) %s don\'t match or (partially match) "

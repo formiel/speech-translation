@@ -769,7 +769,7 @@ def train(args):
     
     # Resume from a snapshot
     if args.resume:
-        # logging.info('resumed from %s' % args.resume)
+        logging.info('resumed from %s' % args.resume)
         torch_resume(args.resume, trainer, reset_optimizer=args.use_adapters and not args.train_adapters)
         # torch_resume(args.resume, trainer)
 

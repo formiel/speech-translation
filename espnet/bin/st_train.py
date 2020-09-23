@@ -217,6 +217,8 @@ def get_parser(parser=None, required=True):
                         help='Use adapters for fine-tuning pre-trained model')
     parser.add_argument('--train-adapters', default=False, type=strtobool,
                         help='Train adapters from scratch')
+    parser.add_argument('--trainable-modules', default="adapter", type=str,
+                        help='Modules that are updated during adapter-based finetuning.')
     # Dual attention related
     parser.add_argument('--cross-weight', default=0.0, type=float,
                         help='Weight decay ratio')

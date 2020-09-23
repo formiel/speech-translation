@@ -438,7 +438,7 @@ def train(args):
         for p in model.parameters():
             p.requires_grad = False
         for n, p in model.named_parameters():
-            if "adapters" in n:
+            if "adapters" in n or "output_layer" in n:
                 p.requires_grad = True
         logging.info('***** Trainable parameters *****')
         for n, p in model.named_parameters():

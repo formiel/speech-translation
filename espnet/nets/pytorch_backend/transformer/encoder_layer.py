@@ -28,8 +28,14 @@ class EncoderLayer(nn.Module):
 
     """
 
-    def __init__(self, size, self_attn, feed_forward, dropout_rate,
-                 normalize_before=True, concat_after=False):
+    def __init__(self, size, 
+                 self_attn, 
+                 feed_forward, 
+                 dropout_rate,
+                 normalize_before=True, 
+                 concat_after=False,
+                 adapters=None,
+                 ):
         """Construct an EncoderLayer object."""
         super(EncoderLayer, self).__init__()
         self.self_attn = self_attn
@@ -42,8 +48,9 @@ class EncoderLayer(nn.Module):
         self.concat_after = concat_after
         if self.concat_after:
             self.concat_linear = nn.Linear(size + size, size)
+        self.adapters = adapters
 
-    def forward(self, x, mask, cache=None):
+    def forward(self, x, mask, lang_id=None, cache=None):
         """Compute encoded features.
 
         :param torch.Tensor x: encoded source features (batch, max_time_in, size)
@@ -77,6 +84,10 @@ class EncoderLayer(nn.Module):
         x = residual + self.dropout(self.feed_forward(x))
         if not self.normalize_before:
             x = self.norm2(x)
+
+        # Adapters
+        if lang_id is not None and self.adapters is not None:
+            x = self.adapters[lang_id](x, x)[0]
 
         if cache is not None:
             x = torch.cat([cache, x], dim=1)

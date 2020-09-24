@@ -97,8 +97,8 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                            help='Number of decoder hidden units')
 
         # Adapters
-        group.add_argument('--adapter-down-sample', default=2, type=int,
-                           help='Down projection times')
+        group.add_argument('--adapter-reduction-factor', default=8, type=int,
+                           help='Reduction factor in bottle neck of adapter modules')
         return parser
 
     @property
@@ -205,6 +205,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
             logging.warning(f'WARNING: Resort to using self.cross_self_from == embedding for cross at self attention.')
         
         # Adapters
+        self.use_adapters = getattr(args, "use_adapters", False)
         adapter_names = getattr(args, "adapters", None)
         # convert target language tokens to ids
         if adapter_names:
@@ -220,7 +221,9 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
             input_layer=args.transformer_input_layer,
             dropout_rate=args.dropout_rate,
             positional_dropout_rate=args.dropout_rate,
-            attention_dropout_rate=args.transformer_attn_dropout_rate
+            attention_dropout_rate=args.transformer_attn_dropout_rate,
+            adapter_names=adapter_names,
+            reduction_factor=args.adapter_reduction_factor,
         )
 
         self.dual_decoder = DualDecoder(
@@ -244,7 +247,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                 cross_to_st=self.cross_to_st,
                 use_output_layer=True if self.use_joint_dict else False,
                 adapter_names=adapter_names,
-                down_sample=args.adapter_down_sample,
+                reduction_factor=args.adapter_reduction_factor,
         )
 
         if not self.use_joint_dict:
@@ -333,7 +336,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
             xs_pad = xs_pad + lang_embed
 
         src_mask = (~make_pad_mask(ilens.tolist())).to(xs_pad.device).unsqueeze(-2) # bs x 1 x max_ilens
-        hs_pad, hs_mask = self.encoder(xs_pad, src_mask) # hs_pad: bs x (max_ilens/4) x adim; hs_mask: bs x 1 x (max_ilens/4)
+        hs_pad, hs_mask = self.encoder(xs_pad, src_mask, tgt_lang_ids[0].data.cpu().numpy()[0]) # hs_pad: bs x (max_ilens/4) x adim; hs_mask: bs x 1 x (max_ilens/4)
         self.hs_pad = hs_pad
 
         # 2. forward decoder

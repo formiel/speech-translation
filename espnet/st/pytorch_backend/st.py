@@ -623,8 +623,6 @@ def train(args):
     time_limit_trigger = TimeLimitTrigger(args)
     trainer = training.Trainer(
         updater, time_limit_trigger, out=args.outdir)
-    logging.info(f'updater: {updater}')
-    logging.info(f'trainer: {trainer}')
 
     if use_sortagrad:
         logging.info(f'use_sortagrad ...')

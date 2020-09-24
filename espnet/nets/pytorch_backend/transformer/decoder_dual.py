@@ -64,7 +64,7 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
                  cross_to_asr=True,
                  cross_to_st=True,
                  adapter_names=None,
-                 down_sample=2,
+                 reduction_factor=8,
                  ):
         """Construct an Decoder object."""
         torch.nn.Module.__init__(self)
@@ -106,14 +106,6 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
         self.normalize_before = normalize_before
 
         self.adapter_names = adapter_names
-        adapters = None
-        if adapter_names:
-            adapters = nn.ModuleDict(
-                {
-                    k: Adapter(attention_dim, attention_dim//down_sample) for k in adapter_names
-                }
-            )
-
         self.dual_decoders = repeat(
             num_blocks,
             lambda: DualDecoderLayer(
@@ -136,7 +128,8 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
                 cross_weight=cross_weight,
                 cross_to_asr=cross_to_asr,
                 cross_to_st=cross_to_st,
-                adapters=adapters,
+                adapters=nn.ModuleDict({k: Adapter(attention_dim, attention_dim//reduction_factor) 
+                        for k in adapter_names}) if adapter_names else None,
             )
         )
         if self.normalize_before:
@@ -174,7 +167,6 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
         x = self.embed(tgt)
         x_asr = self.embed_asr(tgt_asr)
         if self.adapter_names:
-            # lang_id = str(tgt[:, 0:1][0].cpu().detach().numpy()[0])
             lang_id = str(tgt[:, 0:1][0].item())
         else:
             lang_id = None

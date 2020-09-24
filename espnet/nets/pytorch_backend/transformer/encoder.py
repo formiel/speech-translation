@@ -7,6 +7,7 @@
 """Encoder definition."""
 
 import torch
+from torch import nn
 
 from espnet.nets.pytorch_backend.transducer.vgg import VGG2L
 
@@ -19,6 +20,7 @@ from espnet.nets.pytorch_backend.transformer.multi_layer_conv import MultiLayere
 from espnet.nets.pytorch_backend.transformer.positionwise_feed_forward import PositionwiseFeedForward
 from espnet.nets.pytorch_backend.transformer.repeat import repeat
 from espnet.nets.pytorch_backend.transformer.subsampling import Conv2dSubsampling
+from espnet.nets.pytorch_backend.transformer.adapter import Adapter
 
 
 class Encoder(torch.nn.Module):
@@ -57,7 +59,10 @@ class Encoder(torch.nn.Module):
                  concat_after=False,
                  positionwise_layer_type="linear",
                  positionwise_conv_kernel_size=1,
-                 padding_idx=-1):
+                 padding_idx=-1,
+                 adapter_names=None,
+                 reduction_factor=8,
+                 ):
         """Construct an Encoder object."""
         super(Encoder, self).__init__()
 
@@ -101,6 +106,8 @@ class Encoder(torch.nn.Module):
             positionwise_layer_args = (attention_dim, linear_units, positionwise_conv_kernel_size, dropout_rate)
         else:
             raise NotImplementedError("Support only linear or conv1d.")
+
+        self.adapter_names = adapter_names
         self.encoders = repeat(
             num_blocks,
             lambda: EncoderLayer(
@@ -109,13 +116,15 @@ class Encoder(torch.nn.Module):
                 positionwise_layer(*positionwise_layer_args),
                 dropout_rate,
                 normalize_before,
-                concat_after
+                concat_after,
+                adapters=nn.ModuleDict({k: Adapter(attention_dim, attention_dim//reduction_factor)
+                                        for k in adapter_names}) if adapter_names else None,
             )
         )
         if self.normalize_before:
             self.after_norm = LayerNorm(attention_dim)
 
-    def forward(self, xs, masks):
+    def forward(self, xs, masks, lang_id=None):
         """Encode input sequence.
 
         :param torch.Tensor xs: input tensor
@@ -127,7 +136,7 @@ class Encoder(torch.nn.Module):
             xs, masks = self.embed(xs, masks)
         else:
             xs = self.embed(xs)
-        xs, masks = self.encoders(xs, masks)
+        xs, masks = self.encoders(xs, masks, str(lang_id))
         if self.normalize_before:
             xs = self.after_norm(xs)
         return xs, masks

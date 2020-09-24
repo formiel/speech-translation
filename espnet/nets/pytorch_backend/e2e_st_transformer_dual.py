@@ -206,6 +206,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         
         # Adapters
         self.use_adapters = getattr(args, "use_adapters", False)
+        adapter_reduction_factor = getattr(args, "adapter_reduction_factor", 8)
         adapter_names = getattr(args, "adapters", None)
         # convert target language tokens to ids
         if adapter_names:
@@ -223,7 +224,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
             positional_dropout_rate=args.dropout_rate,
             attention_dropout_rate=args.transformer_attn_dropout_rate,
             adapter_names=adapter_names,
-            reduction_factor=args.adapter_reduction_factor,
+            reduction_factor=adapter_reduction_factor,
         )
 
         self.dual_decoder = DualDecoder(
@@ -247,7 +248,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
                 cross_to_st=self.cross_to_st,
                 use_output_layer=True if self.use_joint_dict else False,
                 adapter_names=adapter_names,
-                reduction_factor=args.adapter_reduction_factor,
+                reduction_factor=adapter_reduction_factor,
         )
 
         if not self.use_joint_dict:

@@ -1,67 +1,66 @@
 #!/usr/bin/env python3
 # encoding: utf-8
 
-# Copyright 2019 Kyoto University (Hirofumi Inaguma)
-#  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
+"""
+Modified by Hang Le
+The original copyright is appended below
+--
+Copyright 2019 Kyoto University (Hirofumi Inaguma)
+Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
+"""
 
-"""Training/decoding definition for the speech translation task."""
+"""Training/decoding definition for joint ASR and multilingual task."""
 
 import copy
 import json
 import logging
+import multiprocessing
 import numpy as np
 import os
 import random
+import six
 import sys
 import shutil
-import warnings
-import six
 import time
-import multiprocessing
-from collections import deque
-
-from tensorboardX import SummaryWriter
 import torch
+import warnings
 
-from chainer import training
-from chainer import reporter
-from chainer import utils
-from chainer.training import extensions
-from chainer.training import util, extension
+from collections import deque
+from tensorboardX import SummaryWriter
+
+from chainer import training, reporter, utils
 from chainer import serializer as serializer_module
+from chainer.training import extensions, extension, util
 from chainer.training import trigger as trigger_module
 from chainer.utils import argument
 
-from espnet.asr.asr_utils import adadelta_eps_decay
-from espnet.asr.asr_utils import adam_lr_decay
-from espnet.asr.asr_utils import add_results_to_json, add_results_to_json_st_asr
-from espnet.asr.asr_utils import CompareValueTrigger
-from espnet.asr.asr_utils import get_model_conf
-from espnet.asr.asr_utils import restore_snapshot
-from espnet.asr.asr_utils import snapshot_object
-from espnet.asr.asr_utils import torch_load
-from espnet.asr.asr_utils import torch_resume
-from espnet.asr.asr_utils import torch_snapshot
-from espnet.asr.pytorch_backend.asr_init import load_trained_model, load_trained_model_multi
-from espnet.asr.pytorch_backend.asr_init import load_trained_modules, load_trained_modules_multi
+from espnet.asr.asr_utils import (
+    adadelta_eps_decay, adam_lr_decay,
+    add_results_to_json, add_results_to_json_st_asr,
+    CompareValueTrigger,
+    get_model_conf,
+    restore_snapshot, snapshot_object,
+    torch_load, torch_resume, torch_snapshot
+) 
+from espnet.asr.pytorch_backend.asr_init import (
+    load_trained_model, load_trained_model_multi,
+    load_trained_modules, load_trained_modules_multi
+) 
 
 from espnet.nets.pytorch_backend.e2e_asr import pad_list
 import espnet.nets.pytorch_backend.lm.default as lm_pytorch
 from espnet.nets.st_interface import STInterface
-from espnet.utils.dataset import ChainerDataLoader
-from espnet.utils.dataset import TransformDataset
+from espnet.utils.dataset import ChainerDataLoader, TransformDataset
 from espnet.utils.deterministic_utils import set_deterministic_pytorch
 from espnet.utils.dynamic_import import dynamic_import
 from espnet.utils.io_utils import LoadInputsAndTargets
 from espnet.utils.training.batchfy import make_batchset
 from espnet.utils.training.iterators import ShufflingEnabler
 from espnet.utils.training.tensorboard_logger import TensorboardLogger
-from espnet.utils.training.train_utils import check_early_stop
-from espnet.utils.training.train_utils import set_early_stop
+from espnet.utils.training.train_utils import check_early_stop, set_early_stop
 
+from espnet.asr.pytorch_backend.asr import CustomEvaluator, CustomUpdater
 from espnet.asr.pytorch_backend.asr import CustomConverter as ASRCustomConverter
-from espnet.asr.pytorch_backend.asr import CustomEvaluator
-from espnet.asr.pytorch_backend.asr import CustomUpdater
 
 import matplotlib
 matplotlib.use('Agg')
@@ -88,7 +87,8 @@ class BestValueTrigger(object):
 
     """
 
-    def __init__(self, key, compare, trigger=(1, 'epoch'), best_value=None, verbose=True):
+    def __init__(self, key, compare, trigger=(1, 'epoch'), 
+                best_value=None, verbose=True):
         self._key = key
         self._best_value = best_value
         self._interval_trigger = util.get_trigger(trigger)
@@ -223,8 +223,10 @@ class TimeLimitTrigger(object):
             else:
                 trainer.snapshot_elapsed_times = np.zeros(1)
 
-            est_elapsed_time = (time.time() - self.start_time + np.mean(trainer.snapshot_elapsed_times)) / 60
-            logging.info(f'Estimated next epoch elapsed time {est_elapsed_time:.2f}min. Time limit: {self.time_limit:.2f}min.')
+            est_elapsed_time = (time.time() - self.start_time + \
+                                np.mean(trainer.snapshot_elapsed_times)) / 60
+            logging.info(f'Estimated next epoch elapsed time {est_elapsed_time:.2f}min. \
+                            Time limit: {self.time_limit:.2f}min.')
             if est_elapsed_time < self.time_limit:
                 logging.info('Continue training...')
                 return False
@@ -281,10 +283,15 @@ class CustomConverter(ASRCustomConverter):
         ys_asr = copy.deepcopy(ys)
         xs_pad, ilens, ys_pad = super().__call__(batch, device)
         if self.asr_task:
-            ys_pad_asr = pad_list([torch.from_numpy(np.insert(y[1][1], 0, y[1][0]) if isinstance(y[1], tuple) 
+            ys_pad_asr = pad_list([
+                torch.from_numpy(np.insert(y[1][1], 0, y[1][0]) if isinstance(y[1], tuple) 
+                else np.array(y[1][:]) if isinstance(y, tuple) 
                                             else np.array(y[1][:]) if isinstance(y, tuple) 
-                                            else y).long()
-                           for y in ys_asr], self.ignore_id).to(device)
+                else np.array(y[1][:]) if isinstance(y, tuple) 
+                                            else np.array(y[1][:]) if isinstance(y, tuple) 
+                else np.array(y[1][:]) if isinstance(y, tuple) 
+                else y).long()
+                for y in ys_asr], self.ignore_id).to(device)
         else:
             ys_pad_asr = None
 
@@ -316,13 +323,15 @@ def train(args):
     
     # get paths to data
     if args.one_to_many:
-        train_jpaths = [os.path.join(args.train_json, fname) for fname in sorted(os.listdir(args.train_json)) if fname.endswith('.json')]
-        valid_jpaths = [os.path.join(args.valid_json, fname) for fname in sorted(os.listdir(args.valid_json)) if fname.endswith('.json')]
+        train_jpaths = [os.path.join(args.train_json, fname) for fname in 
+                sorted(os.listdir(args.train_json)) if fname.endswith('.json')]
+        valid_jpaths = [os.path.join(args.valid_json, fname) for fname in 
+                sorted(os.listdir(args.valid_json)) if fname.endswith('.json')]
     else:
         train_jpaths = [args.train_json]
         valid_jpaths = [args.valid_json]
-    logging.info(f'| train_jpaths: {train_jpaths}')
-    logging.info(f'| valid_jpaths: {valid_jpaths}')   
+    logging.info(f'| train json paths: {train_jpaths}')
+    logging.info(f'| valid json jpaths: {valid_jpaths}')   
 
     # prepare language ID tokens for one-to-many systems 
     if args.use_lid:
@@ -346,8 +355,8 @@ def train(args):
     else:
         args.langs_dict_tgt = None
         args.langs_dict_src = None
-    logging.info(f'| langs_dict_tgt : {args.langs_dict_tgt}')
-    logging.info(f'| langs_dict_src : {args.langs_dict_src}')
+    logging.info(f'| langs_dict_tgt: {args.langs_dict_tgt}')
+    logging.info(f'| langs_dict_src: {args.langs_dict_src}')
 
     # get input and output dimension info 
     idims = []
@@ -372,24 +381,29 @@ def train(args):
     if args.train_adapters:
         args.use_adapters = True
     if args.use_adapters:
-        lang_pairs = sorted(args.lang_pairs.split(','))
+        lang_pairs = sorted(args.lang_pairs.split(',')) # reset lang_pairs
         tgt_langs = sorted([p.split('-')[-1] for p in lang_pairs])
-        args.adapters = [l for l in tgt_langs]
-    logging.info(f'| lang_pairs  : {lang_pairs}')
-    logging.info(f'| use_joint_dict = {args.use_joint_dict}')
-    logging.info(f'| use_lid = {args.use_lid}')
+        all_langs = list(sorted(set([l for p in lang_pairs for l in p.split('-')])))
+        args.adapters = [l for l in all_langs]
+    else:
+        args.adapters = None
+    logging.info(f'| lang_pairs: {lang_pairs}')
+    logging.info(f'| use_joint_dict: {args.use_joint_dict}')
+    logging.info(f'| use_lid: {args.use_lid}')
+    logging.info(f'| adapters: {args.adapters}')
 
     # Initialize with pre-trained ASR encoder and MT decoder
     if args.enc_init is not None or args.dec_init is not None:
         logging.info('Loading pretrained ASR encoder and/or MT decoder ...')
-        model = load_trained_modules_multi(idim, odim_tgt, odim_src, args, interface=STInterface)
+        model = load_trained_modules_multi(idim, odim_tgt, odim_src, args, 
+                                            interface=STInterface)
         logging.info(f'*** Model *** \n {model}')
     else:
         model_class = dynamic_import(args.model_module)
         model = model_class(idim, odim_tgt, odim_src, args)
         logging.info(f'*** Model *** \n {model}')
     assert isinstance(model, STInterface)
-    logging.info(f'| Number of model parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}')
+    logging.info(f'| Number of parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}')
 
     subsampling_factor = model.subsample[0]
     logging.info(f'subsampling_factor = {subsampling_factor}')
@@ -433,7 +447,7 @@ def train(args):
     else:
         dtype = torch.float32
 
-    # freeze all weights except for adapters
+    # freeze all weights except for trainable modules in adapters
     if args.use_adapters and not args.train_adapters:
         trainable_modules = args.trainable_modules.split(",")
         for p in model.parameters():
@@ -446,7 +460,6 @@ def train(args):
         for n, p in model.named_parameters():
             if p.requires_grad:
                 logging.info(f'- {n}')
-
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logging.info(f'Number of trainable params: {num_params}')
 
@@ -476,7 +489,8 @@ def train(args):
                           "See https://github.com/NVIDIA/apex#linux")
             raise e
         if args.opt == 'noam':
-            model, optimizer.optimizer = amp.initialize(model, optimizer.optimizer, opt_level=args.train_dtype)
+            model, optimizer.optimizer = amp.initialize(model, optimizer.optimizer, 
+                                                    opt_level=args.train_dtype)
         else:
             model, optimizer = amp.initialize(model, optimizer, opt_level=args.train_dtype)
         use_apex = True
@@ -489,11 +503,13 @@ def train(args):
 
     use_sortagrad = args.sortagrad == -1 or args.sortagrad > 0
     logging.info(f'use_sortagrad: {use_sortagrad}')
+
     # read json data
     num_langs = len(tgt_langs)
     train_all_pairs = [None] * num_langs
     valid_all_pairs = [None] * num_langs
-    batch_size = args.batch_size//num_langs if num_langs > 1 and not args.use_adapters else args.batch_size
+    batch_size = args.batch_size//num_langs if num_langs > 1 and not args.use_adapters \
+                                            else args.batch_size
     for i, jpath in enumerate(train_jpaths):
         with open(jpath, 'rb') as f:
             train_json = json.load(f)['utts']
@@ -618,8 +634,7 @@ def train(args):
     updater = CustomUpdater(
         model, args.grad_clip, train_iter, optimizer,
         device, args.ngpu, args.grad_noise, args.accum_grad, use_apex=use_apex)
-    # trainer = training.Trainer(
-    #     updater, (args.epochs, 'epoch'), out=args.outdir)
+
     time_limit_trigger = TimeLimitTrigger(args)
     trainer = training.Trainer(
         updater, time_limit_trigger, out=args.outdir)
@@ -653,16 +668,17 @@ def train(args):
     else:
         att_reporter = None
 
-    # # Make a plot for training and validation values
-    # trainer.extend(extensions.PlotReport(['main/loss', 'validation/main/loss',
-    #                                       'main/loss_asr', 'validation/main/loss_asr',
-    #                                       'main/loss_st', 'validation/main/loss_st'],
-    #                                      'epoch', file_name='loss.png'))
-    # trainer.extend(extensions.PlotReport(['main/acc', 'validation/main/acc',
-    #                                       'main/acc_asr', 'validation/main/acc_asr'],
-    #                                      'epoch', file_name='acc.png'))
-    # trainer.extend(extensions.PlotReport(['main/bleu', 'validation/main/bleu'],
-    #                                      'epoch', file_name='bleu.png'))
+    # Make a plot for training and validation values
+    if args.do_plots:
+        trainer.extend(extensions.PlotReport(['main/loss', 'validation/main/loss',
+                                            'main/loss_asr', 'validation/main/loss_asr',
+                                            'main/loss_st', 'validation/main/loss_st'],
+                                            'epoch', file_name='loss.png'))
+        trainer.extend(extensions.PlotReport(['main/acc', 'validation/main/acc',
+                                            'main/acc_asr', 'validation/main/acc_asr'],
+                                            'epoch', file_name='acc.png'))
+        trainer.extend(extensions.PlotReport(['main/bleu', 'validation/main/bleu'],
+                                            'epoch', file_name='bleu.png'))
 
     # Save best models
     if args.report_interval_iters > 0:
@@ -770,8 +786,9 @@ def train(args):
     # Resume from a snapshot
     if args.resume:
         logging.info('resumed from %s' % args.resume)
-        torch_resume(args.resume, trainer, reset_optimizer=args.use_adapters and not args.train_adapters)
         # torch_resume(args.resume, trainer)
+        torch_resume(args.resume, trainer, 
+                reset_optimizer=args.use_adapters and not args.train_adapters)
 
     # Run the training
     trainer.run()
@@ -832,41 +849,49 @@ def trans(args):
                 logging.info('| (%d/%d) decoding ' + name, idx, len(js.keys()))
                 batch = [(name, js[name])]
                 feat = load_inputs_and_targets(batch)[0][0]
-                if args.recog_and_trans:    # for dual decoders
+                if args.recog_and_trans: # for dual decoders
                     logging.info('***** Dual decoders: Recognize and Translate simultaneously ******')
                     if args.beam_search_type == 'sum':
                         logging.info('=== Beam search by sum of scores ===')
-                        nbest_hyps = model.recognize_and_translate_sum(feat, args, 
-                                                                        train_args.char_list_tgt,
-                                                                        train_args.char_list_src, 
-                                                                        rnnlm, 
-                                                                        decode_asr_weight=args.decode_asr_weight,
-                                                                        score_is_prob=args.score_is_prob,
-                                                                        ratio_diverse_st=args.ratio_diverse_st,
-                                                                        ratio_diverse_asr=args.ratio_diverse_asr,
-                                                                        use_rev_triu_width=args.use_rev_triu_width,
-                                                                        use_diag=args.use_diag,
-                                                                        debug=args.debug)
-                        new_js[name] = add_results_to_json_st_asr(js[name], nbest_hyps, 
-                                                                    train_args.char_list_tgt,
-                                                                    train_args.char_list_src)
+                        nbest_hyps = model.recognize_and_translate_sum(
+                                    feat, args, 
+                                    train_args.char_list_tgt,
+                                    train_args.char_list_src, 
+                                    rnnlm, 
+                                    decode_asr_weight=args.decode_asr_weight,
+                                    score_is_prob=args.score_is_prob,
+                                    ratio_diverse_st=args.ratio_diverse_st,
+                                    ratio_diverse_asr=args.ratio_diverse_asr,
+                                    use_rev_triu_width=args.use_rev_triu_width,
+                                    use_diag=args.use_diag,
+                                    debug=args.debug)
+                        new_js[name] = add_results_to_json_st_asr(
+                                                    js[name], nbest_hyps, 
+                                                    train_args.char_list_tgt,
+                                                    train_args.char_list_src)
                     elif args.beam_search_type == 'half-joint':
                         logging.info('=== Beam search by sum of scores ===')
-                        nbest_hyps = model.recognize_and_translate_half_joint(feat, args, 
-                                                                        train_args.char_list_tgt,
-                                                                        train_args.char_list_src, 
-                                                                        rnnlm)
-                        new_js[name] = add_results_to_json_st_asr(js[name], nbest_hyps, 
-                                                                    train_args.char_list_tgt,
-                                                                    train_args.char_list_src)
+                        nbest_hyps = model.recognize_and_translate_half_joint(
+                                                    feat, args, 
+                                                    train_args.char_list_tgt,
+                                                    train_args.char_list_src, 
+                                                    rnnlm)
+                        new_js[name] = add_results_to_json_st_asr(
+                                                    js[name], nbest_hyps, 
+                                                    train_args.char_list_tgt,
+                                                    train_args.char_list_src)
                     elif args.beam_search_type == 'separate':
                         logging.info('=== Beam search using beam_cross hypothesis ===')
-                        nbest_hyps, nbest_hyps_asr = model.recognize_and_translate_separate(feat, args, 
-                                                                        train_args.char_list_tgt,
-                                                                        train_args.char_list_src,
-                                                                        rnnlm)
-                        new_js[name] = add_results_to_json(js[name], nbest_hyps, train_args.char_list_tgt)
-                        new_js[name]['output'].append(add_results_to_json(js[name], nbest_hyps_asr, train_args.char_list_src, output_idx=1)['output'][0])
+                        nbest_hyps, nbest_hyps_asr = model.recognize_and_translate_separate(
+                                                    feat, args, 
+                                                    train_args.char_list_tgt,
+                                                    train_args.char_list_src,
+                                                    rnnlm)
+                        new_js[name] = add_results_to_json(
+                                js[name], nbest_hyps, train_args.char_list_tgt)
+                        new_js[name]['output'].append(add_results_to_json(
+                                js[name], nbest_hyps_asr, train_args.char_list_src, 
+                                output_idx=1)['output'][0])
                     else:
                         raise NotImplementedError
                 elif args.recog and args.trans:
@@ -874,7 +899,8 @@ def trans(args):
                     nbest_hyps_asr = model.recognize(feat, args, train_args.char_list_src, rnnlm)
                     nbest_hyps = model.translate(feat, args, train_args.char_list_tgt, rnnlm)
                     new_js[name] = add_results_to_json(js[name], nbest_hyps, train_args.char_list_tgt)
-                    new_js[name]['output'].append(add_results_to_json(js[name], nbest_hyps_asr, train_args.char_list_src, output_idx=1)['output'][0])
+                    new_js[name]['output'].append(add_results_to_json(
+                        js[name], nbest_hyps_asr, train_args.char_list_src, output_idx=1)['output'][0])
                 elif args.recog:
                     logging.info('***** Recognize ONLY ******')
                     nbest_hyps_asr = model.recognize(feat, args, train_args.char_list_src, rnnlm)

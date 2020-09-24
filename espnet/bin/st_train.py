@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 # encoding: utf-8
 
-# Copyright 2019 Kyoto University (Hirofumi Inaguma)
-#  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
+"""
+Modified by Hang Le
+The original copyright is appended below
+--
+Copyright 2019 Kyoto University (Hirofumi Inaguma)
+Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
+"""
 
-"""End-to-end speech translation model training script."""
+"""Joint ASR and multilingual ST training script."""
 
 import logging
 import os
@@ -45,7 +50,8 @@ def get_parser(parser=None, required=True):
     parser.add_argument('--train-dtype', default="float32",
                         choices=["float16", "float32", "float64", "O0", "O1", "O2", "O3"],
                         help='Data type for training (only pytorch backend). '
-                        'O0,O1,.. flags require apex. See https://nvidia.github.io/apex/amp.html#opt-levels')
+                        'O0,O1,.. flags require apex. \
+                        See https://nvidia.github.io/apex/amp.html#opt-levels')
     parser.add_argument('--backend', default='chainer', type=str,
                         choices=['chainer', 'pytorch'],
                         help='Backend library')
@@ -67,7 +73,8 @@ def get_parser(parser=None, required=True):
                         help='Process only N minibatches (for debug)')
     parser.add_argument('--verbose', '-V', default=0, type=int,
                         help='Verbose option')
-    parser.add_argument('--tensorboard-dir', default=None, type=str, nargs='?', help="Tensorboard log dir path")
+    parser.add_argument('--tensorboard-dir', default=None, type=str, nargs='?', 
+                        help="Tensorboard log dir path")
     parser.add_argument('--report-interval-iters', default=100, type=int,
                         help="Report interval iterations")
     parser.add_argument('--save-interval-iters', default=0, type=int,
@@ -79,7 +86,8 @@ def get_parser(parser=None, required=True):
                         help='Filename of validation label data (json)')
     # network architecture
     parser.add_argument('--model-module', type=str, default=None,
-                        help='model defined module (default: espnet.nets.xxx_backend.e2e_st:E2E)')
+                        help='model defined module \
+                            (default: espnet.nets.xxx_backend.e2e_st:E2E)')
     # loss related
     parser.add_argument('--ctc_type', default='warpctc', type=str,
                         choices=['builtin', 'warpctc'],
@@ -89,10 +97,11 @@ def get_parser(parser=None, required=True):
                                 alpha*ctc_loss + (1-alpha)*att_loss')
     parser.add_argument('--asr-weight', default=0.0, type=float,
                         help='Multitask learning coefficient for ASR task, weight: \
-                                asr_weight*(alpha*ctc_loss + (1-alpha)*att_loss) + (1-asr_weight-mt_weight)*st_loss')
+                            asr_weight*(alpha*ctc_loss + \
+                            (1-alpha)*att_loss) + (1-asr_weight-mt_weight)*st_loss')
     parser.add_argument('--mt-weight', default=0.0, type=float,
                         help='Multitask learning coefficient for MT task, weight: \
-                                mt_weight*mt_loss + (1-mt_weight-asr_weight)*st_loss')
+                            mt_weight*mt_loss + (1-mt_weight-asr_weight)*st_loss')
     parser.add_argument('--lsm-weight', default=0.0, type=float,
                         help='Label smoothing weight')
     # recognition options to compute CER/WER
@@ -127,9 +136,11 @@ def get_parser(parser=None, required=True):
                         help='Blank symbol')
     # minibatch related
     parser.add_argument('--sortagrad', default=0, type=int, nargs='?',
-                        help="How many epochs to use sortagrad for. 0 = deactivated, -1 = all epochs")
+                        help="How many epochs to use sortagrad for. \
+                            0 = deactivated, -1 = all epochs")
     parser.add_argument('--batch-count', default='auto', choices=BATCH_COUNT_CHOICES,
-                        help='How to count batch_size. The default (auto) will find how to count by args.')
+                        help='How to count batch_size. \
+                            The default (auto) will find how to count by args.')
     parser.add_argument('--batch-size', '--batch-seqs', '-b', default=0, type=int,
                         help='Maximum seqs in a minibatch (0 to disable)')
     parser.add_argument('--batch-bins', default=0, type=int,
@@ -141,9 +152,11 @@ def get_parser(parser=None, required=True):
     parser.add_argument('--batch-frames-inout', default=0, type=int,
                         help='Maximum input+output frames in a minibatch (0 to disable)')
     parser.add_argument('--maxlen-in', '--batch-seq-maxlen-in', default=800, type=int, metavar='ML',
-                        help='When --batch-count=seq, batch size is reduced if the input sequence length > ML.')
+                        help='When --batch-count=seq, batch size is reduced \
+                            if the input sequence length > ML.')
     parser.add_argument('--maxlen-out', '--batch-seq-maxlen-out', default=150, type=int, metavar='ML',
-                        help='When --batch-count=seq, batch size is reduced if the output sequence length > ML')
+                        help='When --batch-count=seq, batch size is reduced \
+                            if the output sequence length > ML')
     parser.add_argument('--n-iter-processes', default=-1, type=int,
                         help='Number of processes of iterator')
     parser.add_argument('--preprocess-conf', type=str, default=None, nargs='?',
@@ -171,7 +184,8 @@ def get_parser(parser=None, required=True):
                         help='Threshold to stop iteration')
     parser.add_argument('--epochs', '-e', default=30, type=int,
                         help='Maximum number of epochs')
-    parser.add_argument('--early-stop-criterion', default='validation/main/acc', type=str, nargs='?',
+    parser.add_argument('--early-stop-criterion', default='validation/main/acc', 
+                        type=str, nargs='?',
                         help="Value to monitor to trigger an early stopping of the training")
     parser.add_argument('--patience', default=3, type=int, nargs='?',
                         help="Number of epochs to wait without improvement before stopping the training")
@@ -206,13 +220,15 @@ def get_parser(parser=None, required=True):
     parser.add_argument('--lang-pairs', type=str,
                         help='Comma-seperated list of langage pairs for \
                             one-to-many system. For example: en-de,en-fr,en-nl')
-    parser.add_argument('--lang-tok', choices=['encoder-pre-sum', 'decoder-pre'], default=None, type=str,
+    parser.add_argument('--lang-tok', choices=['encoder-pre-sum', 'decoder-pre'], 
+                        default=None, type=str,
                         help='Language token added in the source')
     parser.add_argument('--use-lid', default=False, type=strtobool,
                         help='Use both tgt and src language ID to \
                               replace <sos> token in the decoder')
     parser.add_argument('--num-decoders', choices=[1, 2], default=2, type=int,
                         help='Number of decoders in multilingual ST.')
+    # adapters related
     parser.add_argument('--use-adapters', default=False, type=strtobool,
                         help='Use adapters for fine-tuning pre-trained model')
     parser.add_argument('--train-adapters', default=False, type=strtobool,
@@ -229,18 +245,25 @@ def get_parser(parser=None, required=True):
     parser.add_argument('--cross-src', default=False, type=strtobool,
                         help='Plug the cross attention to the source attention.')
     parser.add_argument('--cross-to-asr', type=strtobool, default=False,
-                        help='Enable cross attention for the ASR decoder i.e. ASR decoder attends to ST decoder.')
+                        help='Enable cross attention for the ASR decoder \
+                            i.e. ASR decoder attends to ST decoder.')
     parser.add_argument('--cross-to-st', type=strtobool, default=False,
-                        help='Enable cross attention for the ST decoder i.e. ST decoder attends to ASR decoder.')
-    parser.add_argument('--cross-operator', default=None, type=str, choices=['sum', 'concat', 'self_sum', 'self_concat', 'src_sum', 'src_concat', 'self_src_sum', 'self_src_concat'],
-                        help='Operator in the cross attention module: whether to sum or concatenate self and cross attention.')
+                        help='Enable cross attention for the ST decoder \
+                            i.e. ST decoder attends to ASR decoder.')
+    parser.add_argument('--cross-operator', default=None, type=str, 
+                        choices=['sum', 'concat', 'self_sum', 'self_concat', 
+                        'src_sum', 'src_concat', 'self_src_sum', 'self_src_concat'],
+                        help='Operator in the cross attention module: whether to \
+                            sum or concatenate self and cross attention.')
     parser.add_argument('--wait-k-asr', default=0, type=int,
                         help='ASR decoder is k steps ahead of ST decoder.')
     parser.add_argument('--wait-k-st', default=0, type=int,
                         help='ST decoder is k steps ahead of ASR decoder.')
-    parser.add_argument('--cross-src-from', default='embedding', type=str, choices=['embedding', 'before-self', 'before-src'],
+    parser.add_argument('--cross-src-from', default='embedding', type=str, 
+                        choices=['embedding', 'before-self', 'before-src'],
                         help='Where to take key and value of the cross decoder.')
-    parser.add_argument('--cross-self-from', default='embedding', type=str, choices=['embedding', 'before-self'],
+    parser.add_argument('--cross-self-from', default='embedding', type=str, 
+                        choices=['embedding', 'before-self'],
                         help='Where to take key and value of the cross decoder.')
     parser.add_argument('--cross-shared', default=False, type=strtobool,
                         help='Cross shared weights.')
@@ -264,9 +287,11 @@ def get_parser(parser=None, required=True):
                         help='')
     parser.add_argument('--fbank-fmax', type=float, default=None,
                         help='')
-    # Other param
+    # Other params
     parser.add_argument('--time-limit', type=float, default=1000,
-                        help='Time limit for each job in hours.')     
+                        help='Time limit for each job in hours.')
+    parser.add_argument('--do-plots', type=strtobool, default=False,
+                        help='Create plots of accuracy and loss of training and validation.')     
     return parser
 
 

@@ -1,14 +1,20 @@
-# Copyright 2019 Hirofumi Inaguma
-#  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
+"""
+Modified by Hang Le
+The original copyright is appended below
+--
+Copyright 2019 Kyoto University (Hirofumi Inaguma)
+Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
+"""
 
-"""Transformer speech recognition model (pytorch)."""
+"""Transformer model for joint ASR and multilingual ST"""
 
-from argparse import Namespace
-from distutils.util import strtobool
-import time
 import logging
 import math
 import six
+import time
+
+from argparse import Namespace
+from distutils.util import strtobool
 
 import torch
 import torch.nn as nn
@@ -18,18 +24,21 @@ from torch.nn.parameter import Parameter
 from espnet.nets.pytorch_backend.ctc import CTC
 from espnet.nets.pytorch_backend.e2e_asr import CTC_LOSS_THRESHOLD
 from espnet.nets.pytorch_backend.e2e_st import Reporter
-from espnet.nets.pytorch_backend.nets_utils import get_subsample
-from espnet.nets.pytorch_backend.nets_utils import make_pad_mask
-from espnet.nets.pytorch_backend.nets_utils import pad_list
-from espnet.nets.pytorch_backend.nets_utils import th_accuracy
+from espnet.nets.pytorch_backend.nets_utils import (
+    get_subsample,
+    make_pad_mask, pad_list,
+    th_accuracy
+) 
+
 from espnet.nets.pytorch_backend.transformer.add_sos_eos import add_sos_eos
 from espnet.nets.pytorch_backend.transformer.attention import MultiHeadedAttention
 from espnet.nets.pytorch_backend.transformer.decoder import Decoder
 from espnet.nets.pytorch_backend.transformer.encoder import Encoder
 from espnet.nets.pytorch_backend.transformer.initializer import initialize
 from espnet.nets.pytorch_backend.transformer.label_smoothing_loss import LabelSmoothingLoss
-from espnet.nets.pytorch_backend.transformer.mask import subsequent_mask, create_cross_mask
-from espnet.nets.pytorch_backend.transformer.mask import target_mask
+from espnet.nets.pytorch_backend.transformer.mask import (
+    subsequent_mask, create_cross_mask, target_mask
+) 
 from espnet.nets.pytorch_backend.transformer.plot import PlotAttentionReport
 from espnet.nets.st_interface import STInterface
 from espnet.nets.e2e_asr_common import end_detect
@@ -69,20 +78,23 @@ class E2E(STInterface, torch.nn.Module):
         group.add_argument("--transformer-input-layer", type=str, default="conv2d",
                            choices=["conv2d", "linear", "embed"],
                            help='transformer input layer type')
-        group.add_argument('--transformer-attn-dropout-rate', default=None, type=float,
-                           help='dropout in transformer attention. use --dropout-rate if None is set')
+        group.add_argument('--transformer-attn-dropout-rate', 
+                            default=None, type=float,
+                            help='dropout in transformer attention. \
+                               Use --dropout-rate if None is set')
         group.add_argument('--transformer-lr', default=10.0, type=float,
                            help='Initial value of learning rate')
         group.add_argument('--transformer-warmup-steps', default=25000, type=int,
                            help='optimizer warmup steps')
-        group.add_argument('--transformer-length-normalized-loss', default=True, type=strtobool,
+        group.add_argument('--transformer-length-normalized-loss', 
+                            default=True, type=strtobool,
                            help='normalize loss by length')
-
         group.add_argument('--dropout-rate', default=0.0, type=float,
                            help='Dropout rate for the encoder')
         # Encoder
         group.add_argument('--elayers', default=4, type=int,
-                           help='Number of encoder layers (for shared recognition part in multi-speaker asr mode)')
+                           help='Number of encoder layers \
+                            (for shared recognition part in multi-speaker asr mode)')
         group.add_argument('--eunits', '-u', default=300, type=int,
                            help='Number of encoder hidden units')
         # Attention
@@ -95,6 +107,9 @@ class E2E(STInterface, torch.nn.Module):
                            help='Number of decoder layers')
         group.add_argument('--dunits', default=320, type=int,
                            help='Number of decoder hidden units')
+        # Adapters
+        group.add_argument('--adapter-reduction-factor', default=2, type=int,
+                           help='Reduction factor in bottle neck of adapter modules')
         return parser
 
     @property
@@ -166,7 +181,8 @@ class E2E(STInterface, torch.nn.Module):
             elif self.cross_src:
                 self.cross_operator = "src_" + self.cross_operator
         if self.cross_operator:
-            assert self.cross_operator in ['self_sum', 'self_concat', 'src_sum', 'src_concat', 'self_src_sum', 'self_src_concat']
+            assert self.cross_operator in ['self_sum', 'self_concat', 'src_sum', 
+                                'src_concat', 'self_src_sum', 'self_src_concat']
 
         # Check parameters
         if self.one_to_many:
@@ -206,14 +222,19 @@ class E2E(STInterface, torch.nn.Module):
                 logging.info(f'| Cross self from: {self.cross_self_from}')
         logging.info(f"Use joint dictionary: {self.use_joint_dict}")
         
-        if (self.cross_src_from != "embedding" and self.cross_src) and (not self.normalize_before):
-            logging.warning(f'WARNING: Resort to using self.cross_src_from == embedding for cross at source attention.')
-        if (self.cross_self_from != "embedding" and self.cross_self) and (not self.normalize_before):
-            logging.warning(f'WARNING: Resort to using self.cross_self_from == embedding for cross at self attention.')
+        if (self.cross_src_from != "embedding" and self.cross_src) \
+            and (not self.normalize_before):
+            logging.warning(f'WARNING: Resort to using \
+                self.cross_src_from == embedding for cross at source attention.')
+        if (self.cross_self_from != "embedding" and self.cross_self) \
+            and (not self.normalize_before):
+            logging.warning(f'WARNING: Resort to using \
+                self.cross_self_from == embedding for cross at self attention.')
 
         # Adapters
+        self.use_adapters = getattr(args, "use_adapters", False)
         adapter_names = getattr(args, "adapters", None)
-        # convert target language tokens to ids
+        adapter_reduction_factor = getattr(args, "adapter_reduction_factor", 2)
         if adapter_names:
             adapter_names = [str(args.char_list_tgt.index(f'<2{l}>')) for l in adapter_names]
         logging.info(f'| adapters = {adapter_names}')
@@ -227,8 +248,8 @@ class E2E(STInterface, torch.nn.Module):
             input_layer=args.transformer_input_layer,
             dropout_rate=args.dropout_rate,
             positional_dropout_rate=args.dropout_rate,
-            attention_dropout_rate=args.transformer_attn_dropout_rate
-        )
+            attention_dropout_rate=args.transformer_attn_dropout_rate,
+        ) #TODO: adapters for encoder
 
         self.decoder = Decoder(
             odim=odim_tgt,
@@ -247,6 +268,7 @@ class E2E(STInterface, torch.nn.Module):
             cross_weight=self.cross_weight,
             use_output_layer=True if self.use_joint_dict else False,
             adapter_names=adapter_names,
+            reduction_factor=adapter_reduction_factor,
         )
 
         if self.do_asr:
@@ -294,7 +316,8 @@ class E2E(STInterface, torch.nn.Module):
             )
         self.reset_parameters(args)  # place after the submodule initialization
         if args.mtlalpha > 0.0:
-            self.ctc = CTC(odim_tgt, args.adim, args.dropout_rate, ctc_type=args.ctc_type, reduce=True)
+            self.ctc = CTC(odim_tgt, args.adim, args.dropout_rate, 
+                            ctc_type=args.ctc_type, reduce=True)
         else:
             self.ctc = None
 
@@ -314,7 +337,8 @@ class E2E(STInterface, torch.nn.Module):
 
         # Language embedding layer
         if self.lang_tok == "encoder-pre-sum":
-            self.language_embeddings = build_embedding(self.langs_dict, self.idim, padding_idx=self.pad)
+            self.language_embeddings = build_embedding(self.langs_dict, self.idim, 
+                                                            padding_idx=self.pad)
             logging.info(f'language_embeddings: {self.language_embeddings}')
 
         # Backward compatability
@@ -329,7 +353,8 @@ class E2E(STInterface, torch.nn.Module):
         # initialize parameters
         initialize(self, args.transformer_init)
         if self.mt_weight > 0:
-            torch.nn.init.normal_(self.encoder_mt.embed[0].weight, mean=0, std=args.adim ** -0.5)
+            torch.nn.init.normal_(self.encoder_mt.embed[0].weight, 
+                                    mean=0, std=args.adim ** -0.5)
             torch.nn.init.constant_(self.encoder_mt.embed[0].weight[self.pad], 0)
 
     def forward(self, xs_pad, ilens, ys_pad, ys_pad_src):
@@ -349,32 +374,30 @@ class E2E(STInterface, torch.nn.Module):
         # 0. Extract target language ID
         # src_lang_ids = None
         tgt_lang_ids, tgt_lang_ids_src = None, None
-
         if self.use_lid:
             tgt_lang_ids = ys_pad[:, 0:1]
-            ys_pad = ys_pad[:, 1:] # remove target language ID in the beginning
-            
+            ys_pad = ys_pad[:, 1:] # remove target language ID in the beginning          
             if self.do_asr:
                 tgt_lang_ids_src = ys_pad_src[:, 0:1]
                 ys_pad_src = ys_pad_src[:, 1:]
 
         # 1. forward encoder
         xs_pad = xs_pad[:, :max(ilens)]  # for data parallel # bs x max_ilens x idim
-
         if self.lang_tok == "encoder-pre-sum":
             lang_embed = self.language_embeddings(tgt_lang_ids) # bs x 1 x idim
             xs_pad = xs_pad + lang_embed
-
         src_mask = (~make_pad_mask(ilens.tolist())).to(xs_pad.device).unsqueeze(-2) # bs x 1 x max_ilens
-        hs_pad, hs_mask = self.encoder(xs_pad, src_mask) # hs_pad: bs x (max_ilens/4) x adim; hs_mask: bs x 1 x (max_ilens/4)
-        self.hs_pad = hs_pad
+        hs_pad, hs_mask = self.encoder(xs_pad, src_mask, None) #TODO: adapters for encoder
+        self.hs_pad = hs_pad # hs_pad: bs x (max_ilens/4) x adim; hs_mask: bs x 1 x (max_ilens/4)
 
         # 2. forward decoder
-        ys_in_pad, ys_out_pad = add_sos_eos(ys_pad, self.sos_tgt, self.eos_tgt, self.ignore_id) # bs x max_lens
-
+        ys_in_pad, ys_out_pad = add_sos_eos(ys_pad, 
+                                            self.sos_tgt, self.eos_tgt, 
+                                            self.ignore_id) # bs x max_lens
         if self.do_asr:
-            ys_in_pad_src, ys_out_pad_src = add_sos_eos(ys_pad_src, self.sos_src, self.eos_src, self.ignore_id) # bs x max_lens_src
-
+            ys_in_pad_src, ys_out_pad_src = add_sos_eos(ys_pad_src, 
+                                                        self.sos_src, self.eos_src, 
+                                                        self.ignore_id) # bs x max_lens_src
         # replace <sos> with target language IDs
         if self.lang_tok == "decoder-pre":
             ys_in_pad = torch.cat([tgt_lang_ids, ys_in_pad[:, 1:]], dim=1)
@@ -387,11 +410,14 @@ class E2E(STInterface, torch.nn.Module):
 
         if self.cross_to_st:
             if self.wait_k_asr > 0:
-                cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, self.ignore_id, wait_k_cross=self.wait_k_asr)
+                cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, 
+                                    self.ignore_id, wait_k_cross=self.wait_k_asr)
             elif self.wait_k_st > 0:
-                cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, self.ignore_id, wait_k_cross=-self.wait_k_st)
+                cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, 
+                                    self.ignore_id, wait_k_cross=-self.wait_k_st)
             else:
-                cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, self.ignore_id, wait_k_cross=0)
+                cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, 
+                                    self.ignore_id, wait_k_cross=0)
             cross_input = self.decoder_asr.embed(ys_in_pad_src)
             if (self.cross_src_from == "before-self" and self.cross_src) or \
                     (self.cross_self_from == "before-self" and self.cross_self): 
@@ -416,11 +442,14 @@ class E2E(STInterface, torch.nn.Module):
             # forward ASR decoder
             if self.cross_to_asr:
                 if self.wait_k_asr > 0:
-                    cross_mask = create_cross_mask(ys_in_pad_src, ys_in_pad, self.ignore_id, wait_k_cross=-self.wait_k_asr)
+                    cross_mask = create_cross_mask(ys_in_pad_src, ys_in_pad, 
+                                    self.ignore_id, wait_k_cross=-self.wait_k_asr)
                 elif self.wait_k_st > 0:
-                    cross_mask = create_cross_mask(ys_in_pad_src, ys_in_pad, self.ignore_id, wait_k_cross=self.wait_k_st)
+                    cross_mask = create_cross_mask(ys_in_pad_src, ys_in_pad, 
+                                    self.ignore_id, wait_k_cross=self.wait_k_st)
                 else:
-                    cross_mask = create_cross_mask(ys_in_pad_src, ys_in_pad, self.ignore_id, wait_k_cross=0)
+                    cross_mask = create_cross_mask(ys_in_pad_src, ys_in_pad, 
+                                    self.ignore_id, wait_k_cross=0)
                 cross_input = self.decoder.embed(ys_in_pad)
                 if (self.cross_src_from == "before-self" and self.cross_src) or \
                     (self.cross_self_from == "before-self" and self.cross_self):

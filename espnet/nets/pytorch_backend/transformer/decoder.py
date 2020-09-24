@@ -59,6 +59,7 @@ class Decoder(ScorerInterface, torch.nn.Module):
                  cross_weight_learnable=False,
                  cross_weight=0.0,
                  adapter_names=None,
+                 reduction_factor=2,
                  ):
         """Construct an Decoder object."""
         torch.nn.Module.__init__(self)
@@ -88,15 +89,12 @@ class Decoder(ScorerInterface, torch.nn.Module):
         cross_src_attn = None
         if cross_operator:
             if 'src_' in cross_operator:
-                # cross_src_attn = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
                 cross_src_attn = True
 
             if 'self_' in cross_operator:
                 if cross_shared and cross_src_attn is not None:
-                    # cross_self_attn = cross_src_attn
                     cross_self_attn = True # TODO: backward compatibility for shared self and source
                 else:
-                    # cross_self_attn = MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate)
                     cross_self_attn = True
             if 'concat' in cross_operator:
                 cross_operator = 'concat'
@@ -106,31 +104,28 @@ class Decoder(ScorerInterface, torch.nn.Module):
                 raise NotImplementedError
         
         self.adapter_names = adapter_names
-        adapters = None
-        if adapter_names:
-            adapters = nn.ModuleDict(
-                {
-                    k: Adapter(attention_dim) for k in adapter_names
-                }
-            )
-
         self.decoders = repeat(
             num_blocks,
             lambda: DecoderLayer(
                 attention_dim,
-                MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate),
-                MultiHeadedAttention(attention_heads, attention_dim, src_attention_dropout_rate),
+                MultiHeadedAttention(
+                    attention_heads, attention_dim, self_attention_dropout_rate),
+                MultiHeadedAttention(
+                    attention_heads, attention_dim, src_attention_dropout_rate),
                 PositionwiseFeedForward(attention_dim, linear_units, dropout_rate),
                 dropout_rate,
                 normalize_before,
                 concat_after,
-                cross_self_attn=MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate) if cross_self_attn else None,
-                cross_src_attn=MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate) if cross_src_attn else None,
+                cross_self_attn=MultiHeadedAttention(
+                    attention_heads, attention_dim, self_attention_dropout_rate) if cross_self_attn else None,
+                cross_src_attn=MultiHeadedAttention(
+                    attention_heads, attention_dim, self_attention_dropout_rate) if cross_src_attn else None,
                 cross_operator=cross_operator,
                 cross_shared=cross_shared,
                 cross_weight_learnable=cross_weight_learnable,
                 cross_weight=cross_weight,
-                adapters=adapters,
+                adapters=nn.ModuleDict({k: Adapter(attention_dim, attention_dim//reduction_factor)
+                                        for k in adapter_names}) if adapter_names else None,
             )
         )
 
@@ -160,11 +155,7 @@ class Decoder(ScorerInterface, torch.nn.Module):
         :rtype: torch.Tensor
         """
         x = self.embed(tgt)
-        if self.adapter_names:
-            # lang_id = str(tgt[:, 0:1][0].cpu().detach().numpy()[0])
-            lang_id = str(tgt[:, 0:1][0].item())
-        else:
-            lang_id = None
+        lang_id = str(tgt[:, 0:1][0].item()) if self.adapter_names else None
         x, tgt_mask, memory, memory_mask, _, _, _, _ = self.decoders(x, tgt_mask, 
                                                                     memory, memory_mask, 
                                                                     cross, cross_mask, 

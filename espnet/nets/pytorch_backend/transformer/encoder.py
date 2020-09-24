@@ -61,7 +61,7 @@ class Encoder(torch.nn.Module):
                  positionwise_conv_kernel_size=1,
                  padding_idx=-1,
                  adapter_names=None,
-                 reduction_factor=8,
+                 reduction_factor=2,
                  ):
         """Construct an Encoder object."""
         super(Encoder, self).__init__()
@@ -136,7 +136,7 @@ class Encoder(torch.nn.Module):
             xs, masks = self.embed(xs, masks)
         else:
             xs = self.embed(xs)
-        xs, masks = self.encoders(xs, masks, str(lang_id))
+        xs, masks = self.encoders(xs, masks, lang_id)
         if self.normalize_before:
             xs = self.after_norm(xs)
         return xs, masks

@@ -18,7 +18,8 @@ class CTC(torch.nn.Module):
     :param bool reduce: reduce the CTC loss into a scalar
     """
 
-    def __init__(self, odim, eprojs, dropout_rate, ctc_type='warpctc', reduce=True):
+    def __init__(self, odim, eprojs, dropout_rate, ctc_type='warpctc', 
+                reduce=True, zero_infinity=False):
         super().__init__()
         self.dropout_rate = dropout_rate
         self.loss = None
@@ -30,7 +31,7 @@ class CTC(torch.nn.Module):
             logging.warning(f'CTC was set to {self.ctc_type} due to PyTorch version.')
         if self.ctc_type == 'builtin':
             reduction_type = 'sum' if reduce else 'none'
-            self.ctc_loss = torch.nn.CTCLoss(reduction=reduction_type)
+            self.ctc_loss = torch.nn.CTCLoss(reduction=reduction_type, zero_infinity=zero_infinity)
         elif self.ctc_type == 'warpctc':
             import warpctc_pytorch as warp_ctc
             self.ctc_loss = warp_ctc.CTCLoss(size_average=True, reduce=reduce)

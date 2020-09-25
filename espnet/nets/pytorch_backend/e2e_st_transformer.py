@@ -326,8 +326,9 @@ class E2E(STInterface, torch.nn.Module):
             )
         self.reset_parameters(args)  # place after the submodule initialization
         if args.mtlalpha > 0.0:
-            self.ctc = CTC(odim_tgt, args.adim, args.dropout_rate, 
-                            ctc_type=args.ctc_type, reduce=True)
+            self.ctc = CTC(odim_src, args.adim, args.dropout_rate, 
+                            ctc_type=args.ctc_type, reduce=True,
+                            zero_infinity=True)
         else:
             self.ctc = None
 

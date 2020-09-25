@@ -508,7 +508,9 @@ def train(args):
     num_langs = len(tgt_langs)
     train_all_pairs = [None] * num_langs
     valid_all_pairs = [None] * num_langs
-    batch_size = args.batch_size//num_langs if num_langs > 1 and not args.use_adapters \
+    batch_size = args.batch_size//num_langs if (num_langs > 1 and 
+                                                args.do_st and
+                                                not args.use_adapters) \
                                             else args.batch_size
     for i, jpath in enumerate(train_jpaths):
         with open(jpath, 'rb') as f:
@@ -539,7 +541,7 @@ def train(args):
         cycle_valid = [cycle(x) for x in valid_all_pairs]
         num_batches_train = max(len(i) for i in train_all_pairs)
         num_batches_valid = max(len(i) for i in valid_all_pairs)
-        if not args.use_adapters:
+        if args.do_st and not args.use_adapters:
             cycle_train = [cycle(x) for x in train_all_pairs]
             cycle_valid = [cycle(x) for x in valid_all_pairs]
 

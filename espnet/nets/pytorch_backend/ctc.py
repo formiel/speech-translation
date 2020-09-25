@@ -80,8 +80,8 @@ class CTC(torch.nn.Module):
         ys_true = torch.cat(ys).cpu().int()  # batch x olen
 
         # get length info
-        logging.info(self.__class__.__name__ + ' input lengths:  ' + ''.join(str(hlens).split('\n')))
-        logging.info(self.__class__.__name__ + ' output lengths: ' + ''.join(str(olens).split('\n')))
+        logging.debug(self.__class__.__name__ + ' input lengths:  ' + ''.join(str(hlens).split('\n')))
+        logging.debug(self.__class__.__name__ + ' output lengths: ' + ''.join(str(olens).split('\n')))
 
         # get ctc loss
         # expected shape of seqLength x batchSize x alphabet_size
@@ -98,7 +98,7 @@ class CTC(torch.nn.Module):
             # NOTE: sum() is needed to keep consistency since warpctc return as tensor w/ shape (1,)
             # but builtin return as tensor w/o shape (scalar).
             self.loss = self.loss.sum()
-            logging.info('ctc loss:' + str(float(self.loss)))
+            logging.debug('ctc loss:' + str(float(self.loss)))
 
         return self.loss
 

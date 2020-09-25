@@ -140,9 +140,11 @@ class E2E(STInterface, torch.nn.Module):
         self.adim = args.adim
         self.ignore_id = ignore_id
 
-        # submodule for ASR task
+        # submodule
         self.mtlalpha = args.mtlalpha
         self.asr_weight = getattr(args, "asr_weight", 0.0)
+        self.num_decoders = getattr(args, "num_decoders", 2)
+        self.do_st = getattr(args, "do_st", True)
         self.do_asr = self.asr_weight > 0 and args.mtlalpha < 1
 
         # cross-attention parameters
@@ -152,7 +154,6 @@ class E2E(STInterface, torch.nn.Module):
         self.cross_operator = getattr(args, "cross_operator", None)
         self.cross_to_asr = getattr(args, "cross_to_asr", False)
         self.cross_to_st = getattr(args, "cross_to_st", False)
-        self.num_decoders = getattr(args, "num_decoders", 1)
         self.wait_k_asr = getattr(args, "wait_k_asr", 0)
         self.wait_k_st = getattr(args, "wait_k_st", 0)
         self.cross_src_from = getattr(args, "cross_src_from", "embedding")
@@ -186,8 +187,13 @@ class E2E(STInterface, torch.nn.Module):
 
         # Check parameters
         if self.one_to_many:
-            # assert self.use_lid
             self.use_lid = True
+        if not self.do_st:
+            assert self.do_asr
+            assert self.num_decoders == 1
+            assert self.asr_weight == 1.0
+            assert (not self.cross_to_asr) and (not self.cross_to_st)
+
         if self.cross_operator and 'sum' in self.cross_operator and self.cross_weight <= 0:
             assert (not self.cross_to_asr) and (not self.cross_to_st)
         if self.cross_to_asr or self.cross_to_st:
@@ -251,28 +257,29 @@ class E2E(STInterface, torch.nn.Module):
             attention_dropout_rate=args.transformer_attn_dropout_rate,
         ) #TODO: adapters for encoder
 
-        self.decoder = Decoder(
-            odim=odim_tgt,
-            attention_dim=args.adim,
-            attention_heads=args.aheads,
-            linear_units=args.dunits,
-            num_blocks=args.dlayers,
-            dropout_rate=args.dropout_rate,
-            positional_dropout_rate=args.dropout_rate,
-            self_attention_dropout_rate=args.transformer_attn_dropout_rate,
-            src_attention_dropout_rate=args.transformer_attn_dropout_rate,
-            normalize_before=self.normalize_before,
-            cross_operator=self.cross_operator if self.cross_to_st else None,
-            cross_shared=self.cross_shared,
-            cross_weight_learnable=self.cross_weight_learnable,
-            cross_weight=self.cross_weight,
-            use_output_layer=True if self.use_joint_dict else False,
-            adapter_names=adapter_names,
-            reduction_factor=adapter_reduction_factor,
-        )
-
+        if self.do_st:
+            logging.info('Do ST')
+            self.decoder = Decoder(
+                odim=odim_tgt,
+                attention_dim=args.adim,
+                attention_heads=args.aheads,
+                linear_units=args.dunits,
+                num_blocks=args.dlayers,
+                dropout_rate=args.dropout_rate,
+                positional_dropout_rate=args.dropout_rate,
+                self_attention_dropout_rate=args.transformer_attn_dropout_rate,
+                src_attention_dropout_rate=args.transformer_attn_dropout_rate,
+                normalize_before=self.normalize_before,
+                cross_operator=self.cross_operator if self.cross_to_st else None,
+                cross_shared=self.cross_shared,
+                cross_weight_learnable=self.cross_weight_learnable,
+                cross_weight=self.cross_weight,
+                use_output_layer=True if self.use_joint_dict else False,
+                adapter_names=adapter_names,
+                reduction_factor=adapter_reduction_factor,
+            )
         if self.do_asr:
-            logging.info('*** Do ASR ***')
+            logging.info('Do ASR')
             self.decoder_asr = Decoder(
                 odim=odim_src,
                 attention_dim=args.adim,
@@ -290,12 +297,13 @@ class E2E(STInterface, torch.nn.Module):
                 cross_weight=self.cross_weight,
                 use_output_layer=True if self.use_joint_dict else False,
             )
-            if self.num_decoders == 1:
+            if self.num_decoders == 1 and self.do_st:
                 logging.info('*** Use shared decoders *** ')
                 self.decoder_asr = self.decoder
 
         if not self.use_joint_dict:
-            self.output_layer = torch.nn.Linear(args.adim, odim_tgt)
+            if self.do_st:
+                self.output_layer = torch.nn.Linear(args.adim, odim_tgt)
             if self.do_asr:
                 self.output_layer_asr = torch.nn.Linear(args.adim, odim_src)
 
@@ -323,16 +331,18 @@ class E2E(STInterface, torch.nn.Module):
 
         if self.asr_weight > 0 and (args.report_cer or args.report_wer):
             from espnet.nets.e2e_asr_common import ErrorCalculator
-            self.error_calculator = ErrorCalculator(args.char_list,
+            self.error_calculator = ErrorCalculator(args.char_list_src,
                                                     args.sym_space, args.sym_blank,
                                                     args.report_cer, args.report_wer)
         else:
             self.error_calculator = None
         self.rnnlm = None
 
-        self.criterion_st = LabelSmoothingLoss(self.odim_tgt, self.ignore_id, args.lsm_weight,
+        if self.do_st:
+            self.criterion_st = LabelSmoothingLoss(self.odim_tgt, self.ignore_id, args.lsm_weight,
                                             args.transformer_length_normalized_loss)
-        self.criterion_asr = LabelSmoothingLoss(self.odim_src, self.ignore_id, args.lsm_weight,
+        if self.do_asr:
+            self.criterion_asr = LabelSmoothingLoss(self.odim_src, self.ignore_id, args.lsm_weight,
                                             args.transformer_length_normalized_loss)
 
         # Language embedding layer
@@ -372,14 +382,27 @@ class E2E(STInterface, torch.nn.Module):
         :rtype: float
         """
         # 0. Extract target language ID
-        # src_lang_ids = None
         tgt_lang_ids, tgt_lang_ids_src = None, None
-        if self.use_lid:
-            tgt_lang_ids = ys_pad[:, 0:1]
-            ys_pad = ys_pad[:, 1:] # remove target language ID in the beginning          
-            if self.do_asr:
+
+        if self.do_st:
+            if self.use_lid: # remove target language ID in the beginning
+                tgt_lang_ids = ys_pad[:, 0:1]
+                ys_pad = ys_pad[:, 1:]
+            ys_in_pad, ys_out_pad = add_sos_eos(ys_pad, self.sos_tgt, self.eos_tgt, 
+                                                self.ignore_id) # bs x max_lens            
+            if self.lang_tok == "decoder-pre": # replace <sos> with target language IDs
+                ys_in_pad = torch.cat([tgt_lang_ids, ys_in_pad[:, 1:]], dim=1)
+            ys_mask = target_mask(ys_in_pad, self.ignore_id) # bs x max_lens x max_lens
+
+        if self.do_asr:
+            if self.use_lid:
                 tgt_lang_ids_src = ys_pad_src[:, 0:1]
                 ys_pad_src = ys_pad_src[:, 1:]
+            ys_in_pad_src, ys_out_pad_src = add_sos_eos(ys_pad_src, self.sos_src, self.eos_src, 
+                                                        self.ignore_id) # bs x max_lens_src  
+            if self.lang_tok == "decoder-pre":
+                ys_in_pad_src = torch.cat([tgt_lang_ids_src, ys_in_pad_src[:, 1:]], dim=1) 
+            ys_mask_src = target_mask(ys_in_pad_src, self.ignore_id) # bs x max_lens_src x max_lens_src
 
         # 1. forward encoder
         xs_pad = xs_pad[:, :max(ilens)]  # for data parallel # bs x max_ilens x idim
@@ -390,56 +413,39 @@ class E2E(STInterface, torch.nn.Module):
         hs_pad, hs_mask = self.encoder(xs_pad, src_mask, None) #TODO: adapters for encoder
         self.hs_pad = hs_pad # hs_pad: bs x (max_ilens/4) x adim; hs_mask: bs x 1 x (max_ilens/4)
 
-        # 2. forward decoder
-        ys_in_pad, ys_out_pad = add_sos_eos(ys_pad, 
-                                            self.sos_tgt, self.eos_tgt, 
-                                            self.ignore_id) # bs x max_lens
-        if self.do_asr:
-            ys_in_pad_src, ys_out_pad_src = add_sos_eos(ys_pad_src, 
-                                                        self.sos_src, self.eos_src, 
-                                                        self.ignore_id) # bs x max_lens_src
-        # replace <sos> with target language IDs
-        if self.lang_tok == "decoder-pre":
-            ys_in_pad = torch.cat([tgt_lang_ids, ys_in_pad[:, 1:]], dim=1)
-            if self.do_asr:
-                ys_in_pad_src = torch.cat([tgt_lang_ids_src, ys_in_pad_src[:, 1:]], dim=1)
+        # 2. forward decoders
+        pred_pad, pred_pad_asr, pred_pad_mt = None, None, None
+        loss_att, loss_asr, loss_mt = 0.0, 0.0, 0.0
 
-        ys_mask = target_mask(ys_in_pad, self.ignore_id) # bs x max_lens x max_lens
-        if self.do_asr:
-            ys_mask_src = target_mask(ys_in_pad_src, self.ignore_id) # bs x max_lens_src x max_lens_src
-
-        if self.cross_to_st:
-            if self.wait_k_asr > 0:
-                cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, 
-                                    self.ignore_id, wait_k_cross=self.wait_k_asr)
-            elif self.wait_k_st > 0:
-                cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, 
-                                    self.ignore_id, wait_k_cross=-self.wait_k_st)
+        if self.do_st:
+            if self.cross_to_st:
+                if self.wait_k_asr > 0:
+                    cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, 
+                                        self.ignore_id, wait_k_cross=self.wait_k_asr)
+                elif self.wait_k_st > 0:
+                    cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, 
+                                        self.ignore_id, wait_k_cross=-self.wait_k_st)
+                else:
+                    cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, 
+                                        self.ignore_id, wait_k_cross=0)
+                cross_input = self.decoder_asr.embed(ys_in_pad_src)
+                if (self.cross_src_from == "before-self" and self.cross_src) or \
+                    (self.cross_self_from == "before-self" and self.cross_self):
+                    cross_input = self.decoder_asr.decoders[0].norm1(cross_input)
+                pred_pad, pred_mask = self.decoder(ys_in_pad, ys_mask, hs_pad, hs_mask,
+                                            cross=cross_input, cross_mask=cross_mask,
+                                            cross_self=self.cross_self, cross_src=self.cross_src)
             else:
-                cross_mask = create_cross_mask(ys_in_pad, ys_in_pad_src, 
-                                    self.ignore_id, wait_k_cross=0)
-            cross_input = self.decoder_asr.embed(ys_in_pad_src)
-            if (self.cross_src_from == "before-self" and self.cross_src) or \
-                    (self.cross_self_from == "before-self" and self.cross_self): 
-                cross_input = self.decoder_asr.decoders[0].norm1(cross_input)
-            pred_pad, pred_mask = self.decoder(ys_in_pad, ys_mask, hs_pad, hs_mask,
-                                        cross=cross_input, cross_mask=cross_mask,
-                                        cross_self=self.cross_self, cross_src=self.cross_src)
-        else:
-            pred_pad, pred_mask = self.decoder(ys_in_pad, ys_mask, hs_pad, hs_mask)
+                pred_pad, pred_mask = self.decoder(ys_in_pad, ys_mask, hs_pad, hs_mask)
 
-        if not self.use_joint_dict:
-            pred_pad = self.output_layer(pred_pad)
+            if not self.use_joint_dict:
+                pred_pad = self.output_layer(pred_pad)
 
-        self.pred_pad = pred_pad
-        pred_pad_asr, pred_pad_mt = None, None
+            # compute attention loss
+            loss_att = self.criterion_st(pred_pad, ys_out_pad)
 
-        # 3. compute attention loss
-        loss_asr, loss_mt = 0.0, 0.0
-        loss_att = self.criterion_st(pred_pad, ys_out_pad)
-        # Multi-task w/ ASR
+        # Multi-task w/ ASR  
         if self.do_asr:
-            # forward ASR decoder
             if self.cross_to_asr:
                 if self.wait_k_asr > 0:
                     cross_mask = create_cross_mask(ys_in_pad_src, ys_in_pad, 
@@ -466,6 +472,7 @@ class E2E(STInterface, torch.nn.Module):
 
             # compute loss
             loss_asr = self.criterion_asr(pred_pad_asr, ys_out_pad_src)
+
         # Multi-task w/ MT
         if self.mt_weight > 0:
             # forward MT encoder
@@ -483,17 +490,11 @@ class E2E(STInterface, torch.nn.Module):
             loss_mt = self.criterion_st(pred_pad_mt, ys_out_pad)
 
         self.acc = th_accuracy(pred_pad.view(-1, self.odim_tgt), ys_out_pad,
-                               ignore_label=self.ignore_id)
-        if pred_pad_asr is not None:
-            self.acc_asr = th_accuracy(pred_pad_asr.view(-1, self.odim_src), ys_out_pad_src,
-                                       ignore_label=self.ignore_id)
-        else:
-            self.acc_asr = 0.0
-        if pred_pad_mt is not None:
-            self.acc_mt = th_accuracy(pred_pad_mt.view(-1, self.odim_tgt), ys_out_pad,
-                                      ignore_label=self.ignore_id)
-        else:
-            self.acc_mt = 0.0
+                                ignore_label=self.ignore_id) if pred_pad is not None else 0.0
+        self.acc_asr = th_accuracy(pred_pad_asr.view(-1, self.odim_src), ys_out_pad_src,
+                                ignore_label=self.ignore_id) if pred_pad_asr is not None else 0.0
+        self.acc_mt = th_accuracy(pred_pad_mt.view(-1, self.odim_tgt), ys_out_pad,
+                                ignore_label=self.ignore_id) if pred_pad_mt is not None else 0.0
 
         # TODO(karita) show predicted text
         # TODO(karita) calculate these stats

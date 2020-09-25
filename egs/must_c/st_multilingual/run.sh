@@ -49,6 +49,7 @@ st_model=
 preprocess_config=
 use_adapters=                # if true, use adapter for fine-tuning
 train_adapters=              # if true, train adapter from scratch
+do_st=                       # if false, train ASR model
 
 # preprocessing related
 src_case=lc.rm              # lc.rm: lowercase with punctuation removal
@@ -643,7 +644,8 @@ if [[ ${stage} -le 4 ]] && [[ ${stop_stage} -ge 4 ]]; then
         --valid-json ${val_json_dir} \
         --use-adapters ${use_adapters} \
         --train-adapters ${train_adapters} \
-        --use-lid ${use_lid}
+        --use-lid ${use_lid} \
+        --do-st ${do_st}
         # --enc-init ${asr_model} \
         # --dec-init ${st_model}
     

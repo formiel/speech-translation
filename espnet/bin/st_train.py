@@ -216,6 +216,9 @@ def get_parser(parser=None, required=True):
     parser.add_argument('--replace-sos', default=False, type=strtobool,
                         help='Replace <sos> in the decoder with a target language ID \
                               (the first token in the target sequence)')
+    # task related
+    parser.add_argument('--do-st', default=True, type=strtobool,
+                        help='Do translation task or not.')
     # One-to-many models related
     parser.add_argument('--lang-pairs', type=str,
                         help='Comma-seperated list of langage pairs for \

@@ -443,6 +443,7 @@ class E2E(STInterface, torch.nn.Module):
             if not self.use_joint_dict:
                 pred_pad = self.output_layer(pred_pad)
 
+            self.pred_pad = pred_pad
             # compute attention loss
             loss_att = self.criterion_st(pred_pad, ys_out_pad)
 
@@ -472,6 +473,7 @@ class E2E(STInterface, torch.nn.Module):
             if not self.use_joint_dict:
                 pred_pad_asr = self.output_layer_asr(pred_pad_asr)
 
+            self.pred_pad_asr = pred_pad_asr
             # compute loss
             loss_asr = self.criterion_asr(pred_pad_asr, ys_out_pad_src)
 
@@ -527,8 +529,8 @@ class E2E(STInterface, torch.nn.Module):
         loss_asr_data = float(alpha * loss_ctc + (1 - alpha) * loss_asr)
         loss_mt_data = None if self.mt_weight == 0 else float(loss_mt)
         loss_st_data = float(loss_att)
-
         loss_data = float(self.loss)
+
         # logging.info(f'loss_ctc={loss_ctc}, self.loss={self.loss}, loss_data={loss_data}')
         if loss_data < CTC_LOSS_THRESHOLD and not math.isnan(loss_data):
             self.reporter.report(loss_asr_data, loss_mt_data, loss_st_data,

@@ -108,7 +108,7 @@ class E2E(STInterface, torch.nn.Module):
         group.add_argument('--dunits', default=320, type=int,
                            help='Number of decoder hidden units')
         # Adapters
-        group.add_argument('--adapter-reduction-factor', default=2, type=int,
+        group.add_argument('--adapter-reduction-factor', default=4, type=int,
                            help='Reduction factor in bottle neck of adapter modules')
         return parser
 
@@ -296,6 +296,8 @@ class E2E(STInterface, torch.nn.Module):
                 cross_weight_learnable=self.cross_weight_learnable,
                 cross_weight=self.cross_weight,
                 use_output_layer=True if self.use_joint_dict else False,
+                adapter_names=adapter_names,
+                reduction_factor=adapter_reduction_factor,
             )
             if self.num_decoders == 1 and self.do_st:
                 logging.info('*** Use shared decoders *** ')
@@ -519,13 +521,15 @@ class E2E(STInterface, torch.nn.Module):
 
         # copyied from e2e_asr
         alpha = self.mtlalpha
-        self.loss = (1 - self.asr_weight - self.mt_weight) * loss_att + self.asr_weight * \
-            (alpha * loss_ctc + (1 - alpha) * loss_asr) + self.mt_weight * loss_mt
+        self.loss = (1 - self.asr_weight - self.mt_weight) * loss_att + \
+            self.asr_weight * (alpha * loss_ctc + (1 - alpha) * loss_asr) + \
+            self.mt_weight * loss_mt
         loss_asr_data = float(alpha * loss_ctc + (1 - alpha) * loss_asr)
         loss_mt_data = None if self.mt_weight == 0 else float(loss_mt)
         loss_st_data = float(loss_att)
 
         loss_data = float(self.loss)
+        # logging.info(f'loss_ctc={loss_ctc}, self.loss={self.loss}, loss_data={loss_data}')
         if loss_data < CTC_LOSS_THRESHOLD and not math.isnan(loss_data):
             self.reporter.report(loss_asr_data, loss_mt_data, loss_st_data,
                                  self.acc_asr, self.acc_mt, self.acc,

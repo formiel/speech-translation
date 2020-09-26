@@ -335,9 +335,6 @@ def main(cmd_args):
     args = parser.parse_args(cmd_args)
     args.start_time = time.time()
 
-    # Change criterion if not do st
-    args.criterion = args.criterion if args.do_st else "acc_asr"
-
     args.model_module = model_module
     if 'chainer_backend' in args.model_module:
         args.backend = 'chainer'

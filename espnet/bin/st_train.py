@@ -238,7 +238,7 @@ def get_parser(parser=None, required=True):
                         help='Train adapters from scratch.')
     parser.add_argument('--trainable-modules', default="adapter", type=str,
                         help='Modules to be updated in adapter-based finetuning.')
-    parser.add_argument('--use-adapters-for-recog', default=False, type=strtobool,
+    parser.add_argument('--use-adapters-for-asr', default=False, type=strtobool,
                         help='Use adapters for transcription text.')
     # Dual attention related
     parser.add_argument('--cross-weight', default=0.0, type=float,

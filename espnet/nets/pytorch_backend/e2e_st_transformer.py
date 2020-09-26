@@ -108,7 +108,7 @@ class E2E(STInterface, torch.nn.Module):
         group.add_argument('--dunits', default=320, type=int,
                            help='Number of decoder hidden units')
         # Adapters
-        group.add_argument('--adapter-reduction-factor', default=4, type=int,
+        group.add_argument('--adapter-reduction-factor', default=4.0, type=float,
                            help='Reduction factor in bottle neck of adapter modules')
         return parser
 
@@ -240,7 +240,7 @@ class E2E(STInterface, torch.nn.Module):
         # Adapters
         self.use_adapters = getattr(args, "use_adapters", False)
         adapter_names = getattr(args, "adapters", None)
-        adapter_reduction_factor = getattr(args, "adapter_reduction_factor", 2)
+        adapter_reduction_factor = getattr(args, "adapter_reduction_factor", 4.0)
         use_adapters_for_asr = getattr(args, "use_adapters_for_asr", False)
         if not use_adapters_for_asr:
             assert not self.do_asr or \

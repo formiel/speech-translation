@@ -59,7 +59,7 @@ class Decoder(ScorerInterface, torch.nn.Module):
                  cross_weight_learnable=False,
                  cross_weight=0.0,
                  adapter_names=None,
-                 reduction_factor=2,
+                 reduction_factor=4.0,
                  ):
         """Construct an Decoder object."""
         torch.nn.Module.__init__(self)
@@ -124,7 +124,7 @@ class Decoder(ScorerInterface, torch.nn.Module):
                 cross_shared=cross_shared,
                 cross_weight_learnable=cross_weight_learnable,
                 cross_weight=cross_weight,
-                adapters=nn.ModuleDict({k: Adapter(attention_dim, attention_dim//reduction_factor)
+                adapters=nn.ModuleDict({k: Adapter(attention_dim, int(attention_dim//reduction_factor))
                                         for k in adapter_names}) if adapter_names else None,
             )
         )

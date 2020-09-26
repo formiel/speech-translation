@@ -36,7 +36,7 @@ def transfer_verification(model_state_dict, partial_state_dict, modules):
     return len(partial_modules) > 0
 
 
-def get_partial_state_dict(model_state_dict, modules):
+def get_partial_state_dict(model_state_dict, modules, init_from_decoder_asr=False):
     """Create state_dict with specified modules matching input model modules.
 
     Note that get_partial_lm_state_dict is used if a LM specified.
@@ -52,6 +52,8 @@ def get_partial_state_dict(model_state_dict, modules):
     new_state_dict = OrderedDict()
 
     for key, value in model_state_dict.items():
+        if init_from_decoder_asr:
+            key = key.replace("_asr", "")
         if any(key.startswith(m) for m in modules):
             new_state_dict[key] = value
 
@@ -126,7 +128,7 @@ def get_partial_lm_state_dict(model_state_dict, modules):
     return new_state_dict, new_modules
 
 
-def filter_modules(model_state_dict, modules):
+def filter_modules(model_state_dict, modules, init_from_decoder_asr=False):
     """Filter non-matched modules in module_state_dict.
 
     Args:
@@ -141,6 +143,8 @@ def filter_modules(model_state_dict, modules):
     incorrect_mods = []
 
     mods_model = list(model_state_dict.keys())
+    mods_model = [k.replace("_asr", "") for k in mods_model] if init_from_decoder_asr \
+                                                            else mods_model
     for mod in modules:
         if any(key.startswith(mod) for key in mods_model):
             new_mods += [mod]
@@ -374,7 +378,8 @@ def load_trained_modules(idim, odim, args, interface=ASRInterface):
 
                     if partial_state_dict:
                         if transfer_verification(main_state_dict, partial_state_dict, modules):
-                            logging.warning('loading %s from model: %s', list(set(['.'.join(m.split('.')[:2]) for m in modules])), model_path)
+                            logging.warning('loading %s from model: %s', 
+                                list(set(['.'.join(m.split('.')[:2]) for m in modules])), model_path)
                             
                             for k in partial_state_dict.keys():
                                 logging.warning('override %s' % k)
@@ -425,7 +430,8 @@ def load_trained_modules_multi(idim, odim_tgt, odim_src, args, interface=ASRInte
     model_class = dynamic_import(args.model_module)
     main_model = model_class(idim, odim_tgt, odim_src, args)
     assert isinstance(main_model, interface)
-    logging.info('| Before loading pretrained models: {}'.format(sum(p.sum().item() for p in main_model.parameters())))
+    logging.info('| Before loading pretrained models: {}'.format(
+                        sum(p.sum().item() for p in main_model.parameters())))
 
     main_state_dict = main_model.state_dict()
 
@@ -440,7 +446,8 @@ def load_trained_modules_multi(idim, odim_tgt, odim_src, args, interface=ASRInte
                     dual_modules = modules
                     modules = filter_modules_dual_decoders(model_state_dict, modules)
                 else:
-                    modules = filter_modules(model_state_dict, modules)
+                    modules = filter_modules(model_state_dict, modules, 
+                            init_from_decoder_asr=args.init_from_decoder_asr)
 
                 if is_lm:
                     partial_state_dict, modules = get_partial_lm_state_dict(model_state_dict, modules)
@@ -448,11 +455,13 @@ def load_trained_modules_multi(idim, odim_tgt, odim_src, args, interface=ASRInte
                     if dual_modules is not None:
                         partial_state_dict, modules = get_partial_state_dict_dual_decoders(model_state_dict, modules)
                     else:
-                        partial_state_dict = get_partial_state_dict(model_state_dict, modules)
+                        partial_state_dict = get_partial_state_dict(model_state_dict, modules,
+                            init_from_decoder_asr=args.init_from_decoder_asr)
 
                     if partial_state_dict:
                         if transfer_verification(main_state_dict, partial_state_dict, modules):
-                            logging.warning('loading %s from model: %s', list(set(['.'.join(m.split('.')[:2]) for m in modules])), model_path)
+                            logging.warning('loading %s from model: %s', 
+                                list(set(['.'.join(m.split('.')[:2]) for m in modules])), model_path)
                             
                             for k in partial_state_dict.keys():
                                 logging.warning('override %s' % k)
@@ -475,6 +484,7 @@ def load_trained_modules_multi(idim, odim_tgt, odim_src, args, interface=ASRInte
 
     main_model.load_state_dict(main_state_dict)
 
-    logging.info('| After loading pretrained models: {}'.format(sum(p.sum().item() for p in main_model.parameters())))
+    logging.info('| After loading pretrained models: {}'.format(
+                        sum(p.sum().item() for p in main_model.parameters())))
 
     return main_model

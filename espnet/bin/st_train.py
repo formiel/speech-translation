@@ -209,6 +209,8 @@ def get_parser(parser=None, required=True):
     parser.add_argument('--dec-init-mods', default='att., dec.',
                         type=lambda s: [str(mod) for mod in s.split(',') if s != ''],
                         help='List of decoder modules to initialize, separated by a comma.')
+    parser.add_argument('--init-from-decoder-asr', default=False, type=strtobool,
+                        help='Do translation task or not.')
     # multilingual related
     parser.add_argument('--multilingual', default=False, type=strtobool,
                         help='Prepend target language ID to the source sentence. \

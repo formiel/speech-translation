@@ -372,7 +372,7 @@ def train(args):
 
     assert len(set(idims)) == 1; idim = idims[0]
     assert len(set(odims_tgt)) == 1; odim_tgt = odims_tgt[0]
-    assert len(set(odims_src)) ==1; odim_src = odims_src[0]
+    assert len(set(odims_src)) == 1; odim_src = odims_src[0]
     logging.info('#input dims : ' + str(idim))
     logging.info('#tgt output dims: ' + str(odim_tgt))
     logging.info('#src output dims: ' + str(odim_src))

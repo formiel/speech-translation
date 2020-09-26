@@ -44,6 +44,7 @@ use_lid=true         # if false then not use language id (for bilingual systems)
 # pre-training related
 asr_model=
 st_model=
+init_from_decoder_asr=
 
 # training and adapters related
 preprocess_config=
@@ -647,7 +648,8 @@ if [[ ${stage} -le 4 ]] && [[ ${stop_stage} -ge 4 ]]; then
         --train-adapters ${train_adapters} \
         --use-lid ${use_lid} \
         --do-st ${do_st} \
-        --use-adapters-for-asr ${use_adapters_for_asr}
+        --use-adapters-for-asr ${use_adapters_for_asr} \
+        --init-from-decoder-asr ${init_from_decoder_asr}
         # --enc-init ${asr_model} \
         # --dec-init ${st_model}
     

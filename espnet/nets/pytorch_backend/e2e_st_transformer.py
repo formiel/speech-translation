@@ -243,7 +243,9 @@ class E2E(STInterface, torch.nn.Module):
         adapter_reduction_factor = getattr(args, "adapter_reduction_factor", 2)
         use_adapters_for_asr = getattr(args, "use_adapters_for_asr", False)
         if not use_adapters_for_asr:
-            assert not self.do_asr or (self.do_asr and self.num_decoders != 1)
+            assert not self.do_asr or \
+                (self.do_asr and self.num_decoders != 1) or \
+                (self.do_asr and not self.do_st) # for backward compatibility with initialization
         if adapter_names:
             adapter_names = [str(args.char_list_tgt.index(f'<2{l}>')) for l in adapter_names]
         logging.info(f'| adapters = {adapter_names}')

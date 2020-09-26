@@ -384,7 +384,8 @@ def train(args):
         lang_pairs = sorted(args.lang_pairs.split(',')) # reset lang_pairs
         tgt_langs = sorted([p.split('-')[-1] for p in lang_pairs])
         all_langs = list(sorted(set([l for p in lang_pairs for l in p.split('-')])))
-        args.adapters = [l for l in all_langs]
+        args.adapters = [l for l in all_langs] if args.use_adapters_for_recog \
+                        else [l for l in tgt_langs]
     else:
         args.adapters = None
     logging.info(f'| lang_pairs: {lang_pairs}')

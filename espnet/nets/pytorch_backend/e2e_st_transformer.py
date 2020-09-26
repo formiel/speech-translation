@@ -241,6 +241,9 @@ class E2E(STInterface, torch.nn.Module):
         self.use_adapters = getattr(args, "use_adapters", False)
         adapter_names = getattr(args, "adapters", None)
         adapter_reduction_factor = getattr(args, "adapter_reduction_factor", 2)
+        use_adapters_for_recog = getattr(args, "use_adapters_for_recog", False)
+        if not use_adapters_for_recog:
+            assert not self.do_asr or (self.do_asr and self.num_decoders != 1)
         if adapter_names:
             adapter_names = [str(args.char_list_tgt.index(f'<2{l}>')) for l in adapter_names]
         logging.info(f'| adapters = {adapter_names}')

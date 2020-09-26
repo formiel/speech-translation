@@ -233,11 +233,13 @@ def get_parser(parser=None, required=True):
                         help='Number of decoders in multilingual ST.')
     # adapters related
     parser.add_argument('--use-adapters', default=False, type=strtobool,
-                        help='Use adapters for fine-tuning pre-trained model')
+                        help='Use adapters for fine-tuning pre-trained model.')
     parser.add_argument('--train-adapters', default=False, type=strtobool,
-                        help='Train adapters from scratch')
+                        help='Train adapters from scratch.')
     parser.add_argument('--trainable-modules', default="adapter", type=str,
-                        help='Modules that are updated during adapter-based finetuning.')
+                        help='Modules to be updated in adapter-based finetuning.')
+    parser.add_argument('--use-adapters-for-recog', default=False, type=strtobool,
+                        help='Use adapters for transcription text.')
     # Dual attention related
     parser.add_argument('--cross-weight', default=0.0, type=float,
                         help='Weight decay ratio')
@@ -294,7 +296,7 @@ def get_parser(parser=None, required=True):
     parser.add_argument('--time-limit', type=float, default=1000,
                         help='Time limit for each job in hours.')
     parser.add_argument('--do-plots', type=strtobool, default=False,
-                        help='Create plots of accuracy and loss of training and validation.')     
+                        help='Create plots for loss and accuracy.')     
     return parser
 
 

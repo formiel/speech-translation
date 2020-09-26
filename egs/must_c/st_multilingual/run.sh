@@ -53,6 +53,7 @@ use_adapters=                # if true, use adapter for fine-tuning
 train_adapters=              # if true, train adapter from scratch
 use_adapters_for_asr=        # if true, then add adapters for transcription
 use_adapters_in_enc=         # if true, use adapters in encoder
+early_stop_criterion=validation/main/acc
 
 # preprocessing related
 src_case=lc.rm              # lc.rm: lowercase with punctuation removal
@@ -645,6 +646,7 @@ if [[ ${stage} -le 4 ]] && [[ ${stop_stage} -ge 4 ]]; then
         --resume $resume \
         --train-json ${train_json_dir} \
         --valid-json ${val_json_dir} \
+        --early-stop-criterion ${early_stop_criterion} \
         --use-lid ${use_lid} \
         --do-st ${do_st} \
         --init-from-decoder-asr ${init_from_decoder_asr} \

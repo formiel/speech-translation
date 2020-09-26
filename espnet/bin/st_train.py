@@ -35,26 +35,28 @@ def get_parser(parser=None, required=True):
     """Get default arguments."""
     if parser is None:
         parser = configargparse.ArgumentParser(
-            description="Train a speech translation (ST) model on one CPU, one or multiple GPUs",
+            description="Train a speech translation (ST) model on one CPU, \
+                        one or multiple GPUs",
             config_file_parser_class=configargparse.YAMLConfigFileParser,
             formatter_class=configargparse.ArgumentDefaultsHelpFormatter)
     # general configuration
     parser.add('--config', is_config_file=True, help='config file path')
     parser.add('--config2', is_config_file=True,
-               help='second config file path that overwrites the settings in `--config`.')
+               help='second config file path that overwrites the settings in \
+                    `--config`.')
     parser.add('--config3', is_config_file=True,
-               help='third config file path that overwrites the settings in `--config` and `--config2`.')
+               help='third config file path that overwrites the settings in \
+                    `--config` and `--config2`.')
 
     parser.add_argument('--ngpu', default=None, type=int,
                         help='Number of GPUs. If not given, use all visible devices')
     parser.add_argument('--train-dtype', default="float32",
                         choices=["float16", "float32", "float64", "O0", "O1", "O2", "O3"],
                         help='Data type for training (only pytorch backend). '
-                        'O0,O1,.. flags require apex. \
-                        See https://nvidia.github.io/apex/amp.html#opt-levels')
+                            'O0,O1,.. flags require apex. \
+                            See https://nvidia.github.io/apex/amp.html#opt-levels')
     parser.add_argument('--backend', default='chainer', type=str,
-                        choices=['chainer', 'pytorch'],
-                        help='Backend library')
+                        choices=['chainer', 'pytorch'], help='Backend library')
     parser.add_argument('--outdir', type=str, required=required,
                         help='Output directory')
     parser.add_argument('--debugmode', default=1, type=int,
@@ -94,7 +96,7 @@ def get_parser(parser=None, required=True):
                         help='Type of CTC implementation to calculate loss.')
     parser.add_argument('--mtlalpha', default=0.0, type=float,
                         help='Multitask learning coefficient, alpha: \
-                                alpha*ctc_loss + (1-alpha)*att_loss')
+                            alpha*ctc_loss + (1-alpha)*att_loss')
     parser.add_argument('--asr-weight', default=0.0, type=float,
                         help='Multitask learning coefficient for ASR task, weight: \
                             asr_weight*(alpha*ctc_loss + \
@@ -120,8 +122,8 @@ def get_parser(parser=None, required=True):
                         help='Incertion penalty')
     parser.add_argument('--maxlenratio', default=0.0, type=float,
                         help="""Input length ratio to obtain max output length.
-                        If maxlenratio=0.0 (default), it uses a end-detect function
-                        to automatically find maximum hypothesis lengths""")
+                            If maxlenratio=0.0 (default), it uses a end-detect function
+                            to automatically find maximum hypothesis lengths""")
     parser.add_argument('--minlenratio', default=0.0, type=float,
                         help='Input length ratio to obtain min output length')
     parser.add_argument('--rnnlm', type=str, default=None,
@@ -151,10 +153,12 @@ def get_parser(parser=None, required=True):
                         help='Maximum output frames in a minibatch (0 to disable)')
     parser.add_argument('--batch-frames-inout', default=0, type=int,
                         help='Maximum input+output frames in a minibatch (0 to disable)')
-    parser.add_argument('--maxlen-in', '--batch-seq-maxlen-in', default=800, type=int, metavar='ML',
+    parser.add_argument('--maxlen-in', '--batch-seq-maxlen-in', default=800, 
+                        type=int, metavar='ML',
                         help='When --batch-count=seq, batch size is reduced \
                             if the input sequence length > ML.')
-    parser.add_argument('--maxlen-out', '--batch-seq-maxlen-out', default=150, type=int, metavar='ML',
+    parser.add_argument('--maxlen-out', '--batch-seq-maxlen-out', default=150, 
+                        type=int, metavar='ML',
                         help='When --batch-count=seq, batch size is reduced \
                             if the output sequence length > ML')
     parser.add_argument('--n-iter-processes', default=-1, type=int,
@@ -186,18 +190,22 @@ def get_parser(parser=None, required=True):
                         help='Maximum number of epochs')
     parser.add_argument('--early-stop-criterion', default='validation/main/acc', 
                         type=str, nargs='?',
-                        help="Value to monitor to trigger an early stopping of the training")
+                        help="Value to monitor to trigger an early stopping of \
+                            the training")
     parser.add_argument('--patience', default=3, type=int, nargs='?',
-                        help="Number of epochs to wait without improvement before stopping the training")
+                        help="Number of epochs to wait without improvement \
+                            before stopping the training")
     parser.add_argument('--grad-clip', default=5, type=float,
                         help='Gradient norm threshold to clip')
     parser.add_argument('--num-save-attention', default=0, type=int,
                         help='Number of samples of attention to be saved')
     parser.add_argument('--grad-noise', type=strtobool, default=False,
-                        help='The flag to switch to use noise injection to gradients during training')
+                        help='The flag to switch to use noise injection to \
+                            gradients during training')
     # speech translation related
     parser.add_argument('--context-residual', default=False, type=strtobool, nargs='?',
-                        help='The flag to switch to use context vector residual in the decoder network')
+                        help='The flag to switch to use context vector residual \
+                            in the decoder network')
     # finetuning related
     parser.add_argument('--enc-init', default=None, type=str, nargs='?',
                         help='Pre-trained ASR model to initialize encoder.')
@@ -214,11 +222,12 @@ def get_parser(parser=None, required=True):
     # multilingual related
     parser.add_argument('--multilingual', default=False, type=strtobool,
                         help='Prepend target language ID to the source sentence. \
-                        Both source/target language IDs must be prepend in the pre-processing stage.')
+                            Both source/target language IDs must be prepend in the \
+                            pre-processing stage.')
     parser.add_argument('--replace-sos', default=False, type=strtobool,
                         help='Replace <sos> in the decoder with a target language ID \
                               (the first token in the target sequence)')
-    # task related
+    # ST/ASR/Joint ST and ASR
     parser.add_argument('--do-st', default=True, type=strtobool,
                         help='Do translation task or not.')
     # One-to-many models related
@@ -334,6 +343,8 @@ def main(cmd_args):
 
     args = parser.parse_args(cmd_args)
     args.start_time = time.time()
+
+    args.criterion = args.criterion if args.do_st else "acc_asr"
 
     args.model_module = model_module
     if 'chainer_backend' in args.model_module:

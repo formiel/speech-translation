@@ -401,7 +401,8 @@ def train(args):
         model = model_class(idim, odim_tgt, odim_src, args)
         logging.info(f'*** Model *** \n {model}')
     assert isinstance(model, STInterface)
-    logging.info(f'| Number of parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}')
+    logging.info(f'| Number of parameters: \
+            {sum(p.numel() for p in model.parameters() if p.requires_grad)}')
 
     subsampling_factor = model.subsample[0]
     logging.info(f'subsampling_factor = {subsampling_factor}')
@@ -681,20 +682,21 @@ def train(args):
                                             'epoch', file_name='bleu.png'))
 
     # Save best models
+    key_to_save = 'validation/main/acc' if args.do_st else 'validation/main/acc_asr'
     if args.report_interval_iters > 0:
         trainer.extend(snapshot_object(model, 'model.loss.best'),
                     trigger=MinValueTrigger('validation/main/loss',
                                             trigger=(args.report_interval_iters, 'iteration'),
                                             best_value=None))
         trainer.extend(snapshot_object(model, 'model.acc.best'),
-                    trigger=MaxValueTrigger('validation/main/acc',
+                    trigger=MaxValueTrigger(key_to_save,
                                             trigger=(args.report_interval_iters, 'iteration'),
                                             best_value=None))
     else:
         trainer.extend(snapshot_object(model, 'model.loss.best'),
                     trigger=MinValueTrigger('validation/main/loss', best_value=None))
         trainer.extend(snapshot_object(model, 'model.acc.best'),
-                    trigger=MaxValueTrigger('validation/main/acc', best_value=None))
+                    trigger=MaxValueTrigger(key_to_save, best_value=None))
 
     # save snapshot which contains model and optimizer states
     if args.save_interval_iters > 0:
@@ -705,14 +707,14 @@ def train(args):
 
     # epsilon decay in the optimizer
     if args.opt == 'adadelta':
-        if args.criterion == 'acc':
+        if 'acc' in args.criterion:
             trainer.extend(restore_snapshot(model, args.outdir + '/model.acc.best', load_fn=torch_load),
                            trigger=CompareValueTrigger(
-                               'validation/main/acc',
+                               key_to_save,
                                lambda best_value, current_value: best_value > current_value))
             trainer.extend(adadelta_eps_decay(args.eps_decay),
                            trigger=CompareValueTrigger(
-                               'validation/main/acc',
+                               key_to_save,
                                lambda best_value, current_value: best_value > current_value))
         elif args.criterion == 'loss':
             trainer.extend(restore_snapshot(model, args.outdir + '/model.loss.best', load_fn=torch_load),
@@ -727,11 +729,11 @@ def train(args):
         if args.criterion == 'acc':
             trainer.extend(restore_snapshot(model, args.outdir + '/model.acc.best', load_fn=torch_load),
                            trigger=CompareValueTrigger(
-                               'validation/main/acc',
+                               key_to_save,
                                lambda best_value, current_value: best_value > current_value))
             trainer.extend(adam_lr_decay(args.lr_decay),
                            trigger=CompareValueTrigger(
-                               'validation/main/acc',
+                               key_to_save,
                                lambda best_value, current_value: best_value > current_value))
         elif args.criterion == 'loss':
             trainer.extend(restore_snapshot(model, args.outdir + '/model.loss.best', load_fn=torch_load),

@@ -388,15 +388,11 @@ def train(args):
                         else [l for l in tgt_langs]
     else:
         args.adapters = None
-    logging.info(f'| adapters: {args.adapters}')
     logging.info(f'| lang_pairs: {lang_pairs}')
-    logging.info(f'| use_lid: {args.use_lid}')
-    logging.info(f'| use_joint_dict: {args.use_joint_dict}')
-    logging.info(f'| use_adapters_for_asr: {args.use_adapters_for_asr}')
 
     # Initialize with pre-trained ASR encoder and MT decoder
     if args.enc_init is not None or args.dec_init is not None:
-        logging.info('Loading pretrained ASR encoder and/or MT decoder ...')
+        logging.info('Loading pretrained encoder and/or decoder ...')
         model = load_trained_modules_multi(idim, odim_tgt, odim_src, args, 
                                             interface=STInterface)
         logging.info(f'*** Model *** \n {model}')

@@ -242,6 +242,8 @@ def get_parser(parser=None, required=True):
                         help='Modules to be updated in adapter-based finetuning.')
     parser.add_argument('--use-adapters-for-asr', default=False, type=strtobool,
                         help='Use adapters for transcription text.')
+    parser.add_argument('--use-adapters-in-enc', default=False, type=strtobool,
+                        help='Use adapters in encoder.')
     # Dual attention related
     parser.add_argument('--cross-weight', default=0.0, type=float,
                         help='Weight decay ratio')

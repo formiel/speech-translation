@@ -242,10 +242,13 @@ class E2E(STInterface, torch.nn.Module):
         adapter_names = getattr(args, "adapters", None)
         adapter_reduction_factor = getattr(args, "adapter_reduction_factor", 4.0)
         use_adapters_for_asr = getattr(args, "use_adapters_for_asr", False)
+        self.use_adapters_in_enc = getattr(args, "use_adapters_in_enc", False)
         if not use_adapters_for_asr:
             assert not self.do_asr or \
                 (self.do_asr and self.num_decoders != 1) or \
-                (self.do_asr and not self.do_st) # for backward compatibility with initialization
+                (self.do_asr and not self.do_st) # for backward compatibility
+        if self.use_adapters_in_enc:
+            assert not use_adapters_for_asr #TODO: adapters in encoder for joint ASR+ST
         if adapter_names:
             adapter_names = [str(args.char_list_tgt.index(f'<2{l}>')) for l in adapter_names]
         logging.info(f'| adapters = {adapter_names}')
@@ -260,7 +263,9 @@ class E2E(STInterface, torch.nn.Module):
             dropout_rate=args.dropout_rate,
             positional_dropout_rate=args.dropout_rate,
             attention_dropout_rate=args.transformer_attn_dropout_rate,
-        ) #TODO: adapters for encoder
+            adapter_names=adapter_names,
+            reduction_factor=adapter_reduction_factor,
+        )
 
         if self.do_st:
             logging.info('Do ST')
@@ -418,7 +423,8 @@ class E2E(STInterface, torch.nn.Module):
             lang_embed = self.language_embeddings(tgt_lang_ids) # bs x 1 x idim
             xs_pad = xs_pad + lang_embed
         src_mask = (~make_pad_mask(ilens.tolist())).to(xs_pad.device).unsqueeze(-2) # bs x 1 x max_ilens
-        hs_pad, hs_mask = self.encoder(xs_pad, src_mask, None) #TODO: adapters for encoder
+        enc_lang_id = str(tgt_lang_ids[0].data.cpu().numpy()[0]) if self.use_adapters_in_enc else None
+        hs_pad, hs_mask = self.encoder(xs_pad, src_mask, enc_lang_id) #TODO: adapters for encoder
         self.hs_pad = hs_pad # hs_pad: bs x (max_ilens/4) x adim; hs_mask: bs x 1 x (max_ilens/4)
 
         # 2. forward decoders

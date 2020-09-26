@@ -61,7 +61,7 @@ class Encoder(torch.nn.Module):
                  positionwise_conv_kernel_size=1,
                  padding_idx=-1,
                  adapter_names=None,
-                 reduction_factor=2,
+                 reduction_factor=4.0,
                  ):
         """Construct an Encoder object."""
         super(Encoder, self).__init__()
@@ -117,7 +117,7 @@ class Encoder(torch.nn.Module):
                 dropout_rate,
                 normalize_before,
                 concat_after,
-                adapters=nn.ModuleDict({k: Adapter(attention_dim, attention_dim//reduction_factor)
+                adapters=nn.ModuleDict({k: Adapter(attention_dim, int(attention_dim/reduction_factor))
                                         for k in adapter_names}) if adapter_names else None,
             )
         )

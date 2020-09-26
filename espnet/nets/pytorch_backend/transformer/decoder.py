@@ -124,7 +124,7 @@ class Decoder(ScorerInterface, torch.nn.Module):
                 cross_shared=cross_shared,
                 cross_weight_learnable=cross_weight_learnable,
                 cross_weight=cross_weight,
-                adapters=nn.ModuleDict({k: Adapter(attention_dim, int(attention_dim//reduction_factor))
+                adapters=nn.ModuleDict({k: Adapter(attention_dim, int(attention_dim/reduction_factor))
                                         for k in adapter_names}) if adapter_names else None,
             )
         )

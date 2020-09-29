@@ -36,7 +36,6 @@ def convert(jsonf, dic, refs, hyps, num_spkrs=1, output_idx=0):
     n_ref = len(refs)
     n_hyp = len(hyps)
     output_idx = int(output_idx)
-    print(f'output_idx = {output_idx}')
     assert n_ref == n_hyp
     assert n_ref == num_spkrs
 

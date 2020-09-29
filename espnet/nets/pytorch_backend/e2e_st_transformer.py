@@ -10,6 +10,7 @@ Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
 import logging
 import math
+import numpy as np
 import six
 import time
 
@@ -24,6 +25,7 @@ from torch.nn.parameter import Parameter
 from espnet.nets.pytorch_backend.ctc import CTC
 from espnet.nets.pytorch_backend.e2e_asr import CTC_LOSS_THRESHOLD
 from espnet.nets.pytorch_backend.e2e_st import Reporter
+from espnet.nets.pytorch_backend.e2e_mt import Reporter as MTReporter
 from espnet.nets.pytorch_backend.nets_utils import (
     get_subsample,
     make_pad_mask, pad_list,
@@ -141,11 +143,13 @@ class E2E(STInterface, torch.nn.Module):
         self.ignore_id = ignore_id
 
         # submodule
-        self.mtlalpha = args.mtlalpha
+        self.mtlalpha = getattr(args, "mtlalpha", 0.0)
         self.asr_weight = getattr(args, "asr_weight", 0.0)
+        self.mt_weight = getattr(args, "mt_weight", 0.0)
         self.num_decoders = getattr(args, "num_decoders", 2)
         self.do_st = getattr(args, "do_st", True)
-        self.do_asr = self.asr_weight > 0 and args.mtlalpha < 1
+        self.do_mt = getattr(args, "do_mt", self.mt_weight > 0.0)
+        self.do_asr = self.asr_weight > 0 and self.mtlalpha < 1
 
         # cross-attention parameters
         self.cross_weight = getattr(args, "cross_weight", 0.0)
@@ -169,8 +173,10 @@ class E2E(STInterface, torch.nn.Module):
             self.langs_dict = getattr(args, "langs_dict_tgt", None)
         self.lang_tok = getattr(args, "lang_tok", None)
 
-        self.subsample = get_subsample(args, mode='st', arch='transformer')
-        self.reporter = Reporter()
+        self.subsample = get_subsample(args, 
+                                       mode='mt' if self.do_mt else 'st', 
+                                       arch='transformer')
+        self.reporter = MTReporter() if self.do_mt else Reporter() 
         self.normalize_before = getattr(args, "normalize_before", True)
 
         # Backward compatability
@@ -189,15 +195,11 @@ class E2E(STInterface, torch.nn.Module):
         if self.one_to_many:
             self.use_lid = True
         if not self.do_st:
-            assert self.do_asr
-            assert self.num_decoders == 1
-            assert self.asr_weight == 1.0
             assert (not self.cross_to_asr) and (not self.cross_to_st)
-
         if self.cross_operator and 'sum' in self.cross_operator and self.cross_weight <= 0:
             assert (not self.cross_to_asr) and (not self.cross_to_st)
         if self.cross_to_asr or self.cross_to_st:
-            assert self.do_asr
+            assert self.do_st and self.do_asr
             assert self.cross_self or self.cross_src
         assert bool(self.cross_operator) == (self.do_asr and (self.cross_to_asr or self.cross_to_st))
         if self.cross_src_from != "embedding" or self.cross_self_from != "embedding":
@@ -241,7 +243,7 @@ class E2E(STInterface, torch.nn.Module):
         self.use_adapters = getattr(args, "use_adapters", False)
         adapter_names = getattr(args, "adapters", None)
         adapter_reduction_factor = getattr(args, "adapter_reduction_factor", 4.0)
-        use_adapters_for_asr = getattr(args, "use_adapters_for_asr", False)
+        use_adapters_for_asr = getattr(args, "use_adapters_for_asr", True)
         self.use_adapters_in_enc = getattr(args, "use_adapters_in_enc", False)
         if not use_adapters_for_asr:
             assert not self.do_asr or \
@@ -253,22 +255,23 @@ class E2E(STInterface, torch.nn.Module):
             adapter_names = [str(args.char_list_tgt.index(f'<2{l}>')) for l in adapter_names]
         logging.info(f'| adapters = {adapter_names}')
 
-        self.encoder = Encoder(
-            idim=idim,
-            attention_dim=args.adim,
-            attention_heads=args.aheads,
-            linear_units=args.eunits,
-            num_blocks=args.elayers,
-            input_layer=args.transformer_input_layer,
-            dropout_rate=args.dropout_rate,
-            positional_dropout_rate=args.dropout_rate,
-            attention_dropout_rate=args.transformer_attn_dropout_rate,
-            adapter_names=adapter_names,
-            reduction_factor=adapter_reduction_factor,
-        )
-
+        if self.do_st or self.do_asr:
+            logging.info(f'Speech encoder')
+            self.encoder = Encoder(
+                idim=idim,
+                attention_dim=args.adim,
+                attention_heads=args.aheads,
+                linear_units=args.eunits,
+                num_blocks=args.elayers,
+                input_layer=args.transformer_input_layer,
+                dropout_rate=args.dropout_rate,
+                positional_dropout_rate=args.dropout_rate,
+                attention_dropout_rate=args.transformer_attn_dropout_rate,
+                adapter_names=adapter_names if self.use_adapters_in_enc else None,
+                reduction_factor=adapter_reduction_factor,
+            )
         if self.do_st:
-            logging.info('Do ST')
+            logging.info('ST decoder')
             self.decoder = Decoder(
                 odim=odim_tgt,
                 attention_dim=args.adim,
@@ -289,7 +292,7 @@ class E2E(STInterface, torch.nn.Module):
                 reduction_factor=adapter_reduction_factor,
             )
         if self.do_asr:
-            logging.info('Do ASR')
+            logging.info('ASR decoder')
             self.decoder_asr = Decoder(
                 odim=odim_src,
                 attention_dim=args.adim,
@@ -320,10 +323,10 @@ class E2E(STInterface, torch.nn.Module):
                 self.output_layer_asr = torch.nn.Linear(args.adim, odim_src)
 
         # submodule for MT task
-        self.mt_weight = getattr(args, "mt_weight", 0.0)
-        if self.mt_weight > 0:
+        if self.do_mt:
+            logging.info('MT encoder')
             self.encoder_mt = Encoder(
-                idim=odim_tgt,
+                idim=odim_src,
                 attention_dim=args.adim,
                 attention_heads=args.aheads,
                 linear_units=args.dunits,
@@ -334,6 +337,23 @@ class E2E(STInterface, torch.nn.Module):
                 attention_dropout_rate=args.transformer_attn_dropout_rate,
                 padding_idx=0
             )
+            if not self.do_st:
+                logging.info('MT decoder')
+                self.decoder_mt = Decoder(
+                    odim=odim_tgt,
+                    attention_dim=args.adim,
+                    attention_heads=args.aheads,
+                    linear_units=args.dunits,
+                    num_blocks=args.dlayers,
+                    dropout_rate=args.dropout_rate,
+                    positional_dropout_rate=args.dropout_rate,
+                    self_attention_dropout_rate=args.transformer_attn_dropout_rate,
+                    src_attention_dropout_rate=args.transformer_attn_dropout_rate,
+                    normalize_before=self.normalize_before,
+                    use_output_layer=True if self.use_joint_dict else False,
+                    adapter_names=adapter_names,
+                    reduction_factor=adapter_reduction_factor,
+                )
         self.reset_parameters(args)  # place after the submodule initialization
         if args.mtlalpha > 0.0:
             self.ctc = CTC(odim_src, args.adim, args.dropout_rate, 
@@ -347,16 +367,26 @@ class E2E(STInterface, torch.nn.Module):
             self.error_calculator = ErrorCalculator(args.char_list_src,
                                                     args.sym_space, args.sym_blank,
                                                     args.report_cer, args.report_wer)
+        elif args.report_bleu:
+            from espnet.nets.e2e_mt_common import ErrorCalculator
+            self.error_calculator = ErrorCalculator(args.char_list_tgt,
+                                                    args.sym_space,
+                                                    args.report_bleu)
         else:
             self.error_calculator = None
         self.rnnlm = None
 
+        # criterion
         if self.do_st:
             self.criterion_st = LabelSmoothingLoss(self.odim_tgt, self.ignore_id, args.lsm_weight,
                                             args.transformer_length_normalized_loss)
         if self.do_asr:
             self.criterion_asr = LabelSmoothingLoss(self.odim_src, self.ignore_id, args.lsm_weight,
                                             args.transformer_length_normalized_loss)
+        if self.do_mt:
+            self.criterion_mt = LabelSmoothingLoss(self.odim_tgt, self.ignore_id, args.lsm_weight,
+                                            args.transformer_length_normalized_loss)
+            self.normalize_length = args.transformer_length_normalized_loss  # for PPL
 
         # Language embedding layer
         if self.lang_tok == "encoder-pre-sum":
@@ -374,11 +404,16 @@ class E2E(STInterface, torch.nn.Module):
     def reset_parameters(self, args):
         """Initialize parameters."""
         # initialize parameters
+        logging.info(f'Initialize parameters...')
         initialize(self, args.transformer_init)
         if self.mt_weight > 0:
+            logging.info(f'Initialize MT encoder and decoder...')
             torch.nn.init.normal_(self.encoder_mt.embed[0].weight, 
                                     mean=0, std=args.adim ** -0.5)
             torch.nn.init.constant_(self.encoder_mt.embed[0].weight[self.pad], 0)
+            torch.nn.init.normal_(self.decoder_mt.embed[0].weight, 
+                                    mean=0, std=args.adim ** -0.5)
+            torch.nn.init.constant_(self.decoder_mt.embed[0].weight[self.pad], 0)
 
     def forward(self, xs_pad, ilens, ys_pad, ys_pad_src):
         """E2E forward.
@@ -397,7 +432,7 @@ class E2E(STInterface, torch.nn.Module):
         # 0. Extract target language ID
         tgt_lang_ids, tgt_lang_ids_src = None, None
 
-        if self.do_st:
+        if self.do_st or self.do_mt:
             if self.use_lid: # remove target language ID in the beginning
                 tgt_lang_ids = ys_pad[:, 0:1]
                 ys_pad = ys_pad[:, 1:]
@@ -407,7 +442,7 @@ class E2E(STInterface, torch.nn.Module):
                 ys_in_pad = torch.cat([tgt_lang_ids, ys_in_pad[:, 1:]], dim=1)
             ys_mask = target_mask(ys_in_pad, self.ignore_id) # bs x max_lens x max_lens
 
-        if self.do_asr:
+        if self.do_asr or self.do_mt:
             if self.use_lid:
                 tgt_lang_ids_src = ys_pad_src[:, 0:1]
                 ys_pad_src = ys_pad_src[:, 1:]
@@ -417,15 +452,25 @@ class E2E(STInterface, torch.nn.Module):
                 ys_in_pad_src = torch.cat([tgt_lang_ids_src, ys_in_pad_src[:, 1:]], dim=1) 
             ys_mask_src = target_mask(ys_in_pad_src, self.ignore_id) # bs x max_lens_src x max_lens_src
 
+        if self.do_mt and not self.do_st:
+            ys_pad_src_mt = ys_in_pad_src[:, :max(ilens)]  # for data parallel
+            ys_mask_src_mt = (~make_pad_mask(ilens.tolist())).to(ys_pad_src_mt.device).unsqueeze(-2)
+
         # 1. forward encoder
-        xs_pad = xs_pad[:, :max(ilens)]  # for data parallel # bs x max_ilens x idim
-        if self.lang_tok == "encoder-pre-sum":
-            lang_embed = self.language_embeddings(tgt_lang_ids) # bs x 1 x idim
-            xs_pad = xs_pad + lang_embed
-        src_mask = (~make_pad_mask(ilens.tolist())).to(xs_pad.device).unsqueeze(-2) # bs x 1 x max_ilens
-        enc_lang_id = str(tgt_lang_ids[0].data.cpu().numpy()[0]) if self.use_adapters_in_enc else None
-        hs_pad, hs_mask = self.encoder(xs_pad, src_mask, enc_lang_id) #TODO: adapters for encoder
-        self.hs_pad = hs_pad # hs_pad: bs x (max_ilens/4) x adim; hs_mask: bs x 1 x (max_ilens/4)
+        if self.do_st or self.do_asr:
+            xs_pad = xs_pad[:, :max(ilens)]  # for data parallel # bs x max_ilens x idim
+            if self.lang_tok == "encoder-pre-sum":
+                lang_embed = self.language_embeddings(tgt_lang_ids) # bs x 1 x idim
+                xs_pad = xs_pad + lang_embed
+            src_mask = (~make_pad_mask(ilens.tolist())).to(xs_pad.device).unsqueeze(-2) # bs x 1 x max_ilens
+            enc_lang_id = str(tgt_lang_ids[0].data.cpu().numpy()[0]) if self.use_adapters_in_enc else None
+            hs_pad, hs_mask = self.encoder(xs_pad, src_mask, enc_lang_id)
+            # self.hs_pad = hs_pad # hs_pad: bs x (max_ilens/4) x adim; hs_mask: bs x 1 x (max_ilens/4)
+        elif self.do_mt and not self.do_st:
+            hs_pad_mt, hs_mask_mt = self.encoder_mt(ys_pad_src_mt, ys_mask_src_mt)
+            # self.hs_pad = hs_pad
+        else:
+            raise NotImplementedError
 
         # 2. forward decoders
         pred_pad, pred_pad_asr, pred_pad_mt = None, None, None
@@ -490,21 +535,26 @@ class E2E(STInterface, torch.nn.Module):
             loss_asr = self.criterion_asr(pred_pad_asr, ys_out_pad_src)
 
         # Multi-task w/ MT
-        if self.mt_weight > 0:
-            # forward MT encoder
-            ilens_mt = torch.sum(ys_pad_src != self.ignore_id, dim=1).cpu().numpy()
-            # NOTE: ys_pad_src is padded with -1
-            ys_src = [y[y != self.ignore_id] for y in ys_pad_src]  # parse padded ys_src
-            ys_zero_pad_src = pad_list(ys_src, self.pad)  # re-pad with zero
-            ys_zero_pad_src = ys_zero_pad_src[:, :max(ilens_mt)]  # for data parallel
-            src_mask_mt = (~make_pad_mask(ilens_mt.tolist())).to(ys_zero_pad_src.device).unsqueeze(-2)
-            # ys_zero_pad_src, ys_pad = self.target_forcing(ys_zero_pad_src, ys_pad)
-            hs_pad_mt, hs_mask_mt = self.encoder_mt(ys_zero_pad_src, src_mask_mt)
-            # forward MT decoder
-            pred_pad_mt, _ = self.decoder(ys_in_pad, ys_mask, hs_pad_mt, hs_mask_mt)
-            # compute loss
-            loss_mt = self.criterion_st(pred_pad_mt, ys_out_pad)
+        if self.do_mt:
+            if self.do_st:
+                # forward MT encoder
+                ilens_mt = torch.sum(ys_pad_src != self.ignore_id, dim=1).cpu().numpy()
+                # NOTE: ys_pad_src is padded with -1
+                ys_src = [y[y != self.ignore_id] for y in ys_pad_src]  # parse padded ys_src
+                ys_zero_pad_src = pad_list(ys_src, self.pad)  # re-pad with zero
+                ys_zero_pad_src = ys_zero_pad_src[:, :max(ilens_mt)]  # for data parallel
+                src_mask_mt = (~make_pad_mask(ilens_mt.tolist())).to(ys_zero_pad_src.device).unsqueeze(-2)
+                # ys_zero_pad_src, ys_pad = self.target_forcing(ys_zero_pad_src, ys_pad)
+                hs_pad_mt, hs_mask_mt = self.encoder_mt(ys_zero_pad_src, src_mask_mt)
+                # forward MT decoder
+                pred_pad_mt, _ = self.decoder(ys_in_pad, ys_mask, hs_pad_mt, hs_mask_mt)
+                # compute loss
+                loss_mt = self.criterion_st(pred_pad_mt, ys_out_pad)
+            else:
+                pred_pad_mt, pred_mask_mt = self.decoder_mt(ys_in_pad, ys_mask, hs_pad_mt, hs_mask_mt)
+                loss_mt = self.criterion_mt(pred_pad_mt, ys_out_pad)
 
+        # compute accuracy
         self.acc = th_accuracy(pred_pad.view(-1, self.odim_tgt), ys_out_pad,
                                 ignore_label=self.ignore_id) if pred_pad is not None else 0.0
         self.acc_asr = th_accuracy(pred_pad_asr.view(-1, self.odim_src), ys_out_pad_src,
@@ -543,9 +593,28 @@ class E2E(STInterface, torch.nn.Module):
         loss_st_data = float(loss_att)
         loss_data = float(self.loss)
 
-        # logging.info(f'loss_ctc={loss_ctc}, self.loss={self.loss}, loss_data={loss_data}')
+        # compute bleu and ppl for mt model
+        if self.do_mt:
+            bleu = 0.0
+            if self.training or self.error_calculator is None:
+                bleu = 0.0
+            else:
+                ys_hat_mt = pred_pad_mt.argmax(dim=-1)
+                bleu = self.error_calculator(ys_hat_mt.cpu(), ys_out_pad.cpu())
+
+            if self.normalize_length:
+                self.ppl = np.exp(loss_data)
+            else:
+                ys_out_pad = ys_out_pad.view(-1)
+                ignore = ys_out_pad == self.ignore_id  # (B,)
+                total = len(ys_out_pad) - ignore.sum().item()
+                self.ppl = np.exp(loss_data * ys_out_pad.size(0) / total)
+
         if loss_data < CTC_LOSS_THRESHOLD and not math.isnan(loss_data):
-            self.reporter.report(loss_asr_data, loss_mt_data, loss_st_data,
+            if self.do_mt:
+                self.reporter.report(loss_data, self.acc_mt, self.ppl, bleu)
+            else:
+                self.reporter.report(loss_asr_data, loss_mt_data, loss_st_data,
                                  self.acc_asr, self.acc_mt, self.acc,
                                  cer_ctc, cer, wer, 0.0,  # TODO(hirofumi0810): bleu
                                  loss_data)

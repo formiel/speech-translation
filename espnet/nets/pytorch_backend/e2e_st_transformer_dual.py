@@ -337,7 +337,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
             xs_pad = xs_pad + lang_embed
 
         src_mask = (~make_pad_mask(ilens.tolist())).to(xs_pad.device).unsqueeze(-2) # bs x 1 x max_ilens
-        hs_pad, hs_mask = self.encoder(xs_pad, src_mask, tgt_lang_ids[0].data.cpu().numpy()[0]) # hs_pad: bs x (max_ilens/4) x adim; hs_mask: bs x 1 x (max_ilens/4)
+        hs_pad, hs_mask = self.encoder(xs_pad, src_mask, str(tgt_lang_ids[0].data.cpu().numpy()[0])) # hs_pad: bs x (max_ilens/4) x adim; hs_mask: bs x 1 x (max_ilens/4)
         self.hs_pad = hs_pad
 
         # 2. forward decoder

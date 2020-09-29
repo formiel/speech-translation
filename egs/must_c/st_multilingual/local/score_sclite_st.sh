@@ -17,13 +17,14 @@ case=lc.rm
 
 . utils/parse_options.sh
 
-if [ $# != 2 ]; then
-    echo "Usage: $0 <data-dir> <dict>";
+if [ $# != 3 ]; then
+    echo "Usage: $0 <data-dir> <dict> <output-idx>";
     exit 1;
 fi
 
 dir=$1
 dic=$2
+idx=$3
 
 if [[ ! -f ${dir}/data.json ]]; then
     concatjson.py ${dir}/data.*.json > ${dir}/data.json
@@ -32,7 +33,7 @@ else
     echo "json files have already been concatenated."
 fi
 json2trn.py ${dir}/data.json ${dic} --refs ${dir}/ref.trn.en --hyps ${dir}/hyp.trn.en \
-                                    --output-idx 1
+                                    --output-idx ${idx}
 
 if ${remove_blank}; then
     sed -i.bak2 -r 's/<blank> //g' ${dir}/hyp.trn.en

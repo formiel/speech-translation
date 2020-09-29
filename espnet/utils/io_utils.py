@@ -135,20 +135,29 @@ class LoadInputsAndTargets(object):
                 if self.mode == 'mt':
                     x = np.fromiter(map(int, info['output'][1]['tokenid'].split()),
                                     dtype=np.int64)
+                    if self.langs_dict_tgt is not None and self.langs_dict_src is not None:
+                        x = (self.langs_dict_src[f'<2{self.src_lang}>'], x)
                     x_feats_dict.setdefault(info['output'][1]['name'], []).append(x)
 
                 for idx, inp in enumerate(info['output']):
                     if 'tokenid' in inp:
-                        # ======= Legacy format for output =======
-                        # {"output": [{"tokenid": "1 2 3 4"}])
-                        x = np.fromiter(map(int, inp['tokenid'].split()),
-                                        dtype=np.int64)
-                        # Added lang_id to x
-                        if self.langs_dict_tgt is not None and self.langs_dict_src is not None:
+                        if self.mode != 'mt':
+                            # ======= Legacy format for output =======
+                            # {"output": [{"tokenid": "1 2 3 4"}])
+                            x = np.fromiter(map(int, inp['tokenid'].split()),
+                                            dtype=np.int64)
+                            # Added lang_id to x
+                            if self.langs_dict_tgt is not None and self.langs_dict_src is not None:
+                                if inp['name'] == 'target1':
+                                    x = (self.langs_dict_tgt['<2'+info['lang']+'>'], x)
+                                else:
+                                    x = (self.langs_dict_src[f'<2{self.src_lang}>'], x)
+                        else:
                             if inp['name'] == 'target1':
-                                x = (self.langs_dict_tgt['<2'+info['lang']+'>'], x)
-                            else:
-                                x = (self.langs_dict_src[f'<2{self.src_lang}>'], x)
+                                x = np.fromiter(map(int, inp['tokenid'].split()),
+                                                dtype=np.int64)
+                                if self.langs_dict_tgt is not None and self.langs_dict_src is not None:
+                                    x = (self.langs_dict_tgt['<2'+info['lang']+'>'], x)
                     else:
                         # ======= New format =======
                         # {"input":

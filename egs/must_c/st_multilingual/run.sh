@@ -70,7 +70,7 @@ decode_config=    # configuration for decoding
 trans_model=      # set a model to be used for decoding e.g. 'model.acc.best'
 trans_set=        # data set to decode
 max_iter_eval=    # get best model up to this iteration
-min_iter_eval=
+min_iter_eval=    # get best model from this iteration
 
 # model average related (only for transformer)
 n_average=1                  # the number of ST models to be averaged,
@@ -649,6 +649,7 @@ if [[ ${stage} -le 4 ]] && [[ ${stop_stage} -ge 4 ]]; then
         --early-stop-criterion ${early_stop_criterion} \
         --use-lid ${use_lid} \
         --do-st ${do_st} \
+        --report-bleu \
         --init-from-decoder-asr ${init_from_decoder_asr} \
         --use-adapters ${use_adapters} \
         --train-adapters ${train_adapters} \
@@ -766,8 +767,12 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
         if [[ ! -s "${expdir}/${decode_dir}/result.wrd.wer.txt" ]]; then
             echo "Compute WER score..."
             # chmod +x local/score_sclite_st.sh
+            idx=1
+            if [[ $tag == *"asr_model"* ]]; then
+                idx=0
+            fi
             local/score_sclite_st.sh --case ${src_case} --bpe ${nbpe_src} --bpemodel ${bpemodel_src}.model --wer true \
-                ${expdir}/${decode_dir} ${dict_src}
+                ${expdir}/${decode_dir} ${dict_src} ${idx}
         else
             echo "WER has been computed."
             cat ${expdir}/${decode_dir}/result.wrd.wer.txt

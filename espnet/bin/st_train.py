@@ -227,9 +227,12 @@ def get_parser(parser=None, required=True):
     parser.add_argument('--replace-sos', default=False, type=strtobool,
                         help='Replace <sos> in the decoder with a target language ID \
                               (the first token in the target sequence)')
-    # ST/ASR/Joint ST and ASR
+    # set tasks to train models: ST, or ASR, or MT, or joint ST and ASR
+    # (ST is set using --do-st, ASR is set via --asr-weight and --mtlalpha, 
+    # joint ASR and ST is set using --asr-weight and --do-st,
+    # MT is set via --mt-weight)
     parser.add_argument('--do-st', default=True, type=strtobool,
-                        help='Do translation task or not.')
+                        help='Do speech translation task.')
     # One-to-many models related
     parser.add_argument('--lang-pairs', type=str,
                         help='Comma-seperated list of langage pairs for \
@@ -355,10 +358,12 @@ def main(cmd_args):
     # logging info
     if args.verbose > 0:
         logging.basicConfig(
-            level=logging.INFO, format='%(asctime)s (%(module)s:%(lineno)d) %(levelname)s: %(message)s')
+            level=logging.INFO, 
+            format='%(asctime)s (%(module)s:%(lineno)d) %(levelname)s: %(message)s')
     else:
         logging.basicConfig(
-            level=logging.WARN, format='%(asctime)s (%(module)s:%(lineno)d) %(levelname)s: %(message)s')
+            level=logging.WARN, 
+            format='%(asctime)s (%(module)s:%(lineno)d) %(levelname)s: %(message)s')
         logging.warning('Skip DEBUG/INFO messages')
 
     # If --ngpu is not given,
@@ -398,7 +403,7 @@ def main(cmd_args):
     # load dictionary for debug log
     if args.dict_src is not None and args.dict_tgt is not None:
         if args.dict_src == args.dict_tgt:
-            logging.info('*** Use JOINT dictionary ***')
+            logging.info('*** Use JOINT dictionary for source and target ***')
             args.use_joint_dict = True
             with open(args.dict_src, 'rb') as f:
                 dictionary = f.readlines()
@@ -409,7 +414,7 @@ def main(cmd_args):
             args.char_list_src = char_list
             args.char_list_tgt = char_list
         else:
-            logging.info('*** Use SEPARATE dictionaries ***')
+            logging.info('*** Use SEPARATE dictionaries for source and target ***')
             args.use_joint_dict = False
             with open(args.dict_src, 'rb') as f:
                 dictionary = f.readlines()

@@ -59,8 +59,10 @@ from espnet.utils.training.iterators import ShufflingEnabler
 from espnet.utils.training.tensorboard_logger import TensorboardLogger
 from espnet.utils.training.train_utils import check_early_stop, set_early_stop
 
-from espnet.asr.pytorch_backend.asr import CustomEvaluator, CustomUpdater
-from espnet.asr.pytorch_backend.asr import CustomConverter as ASRCustomConverter
+from espnet.asr.pytorch_backend.asr import (
+    CustomEvaluator, CustomUpdater,
+    CustomConverter as AsrCustomConverter
+)
 
 import matplotlib
 matplotlib.use('Agg')
@@ -253,7 +255,7 @@ def shuffle_batches(batches_list, shuffle=True):
         return batches_list
     
 
-class CustomConverter(ASRCustomConverter):
+class StAsrCustomConverter(AsrCustomConverter):
     """Custom batch converter for Pytorch.
 
     Args:
@@ -284,18 +286,60 @@ class CustomConverter(ASRCustomConverter):
         xs_pad, ilens, ys_pad = super().__call__(batch, device)
         if self.asr_task:
             ys_pad_asr = pad_list([
-                torch.from_numpy(np.insert(y[1][1], 0, y[1][0]) if isinstance(y[1], tuple) 
-                else np.array(y[1][:]) if isinstance(y, tuple) 
-                                            else np.array(y[1][:]) if isinstance(y, tuple) 
-                else np.array(y[1][:]) if isinstance(y, tuple) 
-                                            else np.array(y[1][:]) if isinstance(y, tuple) 
-                else np.array(y[1][:]) if isinstance(y, tuple) 
-                else y).long()
+                torch.from_numpy(
+                    np.insert(y[1][1], 0, y[1][0]) if isinstance(y[1], tuple) 
+                    else np.array(y[1][:]) if isinstance(y, tuple)
+                    else y).long()
                 for y in ys_asr], self.ignore_id).to(device)
         else:
             ys_pad_asr = None
 
         return xs_pad, ilens, ys_pad, ys_pad_asr
+
+
+class MtCustomConverter(object):
+    """Custom batch converter for Pytorch."""
+
+    def __init__(self):
+        """Construct a CustomConverter object."""
+        self.ignore_id = -1
+        self.pad = 0
+        # NOTE: we reserve index:0 for <pad> although this is reserved for a blank class
+        # in ASR. However, blank labels are not used in NMT. To keep the vocabulary size,
+        # we use index:0 for padding instead of adding one more class.
+
+    def __call__(self, batch, device=torch.device('cpu')):
+        """Transform a batch and send it to a device.
+
+        Args:
+            batch (list): The batch to transform.
+            device (torch.device): The device to send to.
+
+        Returns:
+            tuple(torch.Tensor, torch.Tensor, torch.Tensor)
+
+        """
+        # batch should be located in list
+        assert len(batch) == 1
+        ys, ys_asr = batch[0]
+
+        # get batch of lengths of input sequences
+        ilens = np.array([y[1].shape[0] if isinstance(y, tuple) else y.shape[0]
+                        for y in ys])
+        ilens = torch.from_numpy(ilens).to(device)
+
+        # perform padding and convert to tensor
+        ys_pad = pad_list([
+            torch.from_numpy(
+                np.insert(y[1], 0, y[0]) if isinstance(y, tuple) else y).long()
+            for y in ys], self.ignore_id).to(device)
+
+        ys_pad_asr = pad_list([
+            torch.from_numpy(
+                np.insert(y[1], 0, y[0]) if isinstance(y, tuple) else y).long()
+            for y in ys_asr], self.ignore_id).to(device)
+
+        return None, ilens, ys_pad, ys_pad_asr
 
 
 def train(args):
@@ -401,8 +445,8 @@ def train(args):
         model = model_class(idim, odim_tgt, odim_src, args)
         logging.info(f'*** Model *** \n {model}')
     assert isinstance(model, STInterface)
-    logging.info(f'| Number of parameters: \
-            {sum(p.numel() for p in model.parameters() if p.requires_grad)}')
+    num_params = sum(p.numel() for p in model.parameters())
+    logging.info(f'| Number of parameters: {num_params}')
 
     subsampling_factor = model.subsample[0]
     logging.info(f'subsampling_factor = {subsampling_factor}')
@@ -429,6 +473,8 @@ def train(args):
     for key in sorted(vars(args).keys()):
         if "char_list" not in key:
             logging.info('ARGS: ' + key + ': ' + str(vars(args)[key]))
+        else:
+            logging.info(f'ARGS: {key}: {vars(args)[key][:10]}, ..., {vars(args)[key][-5:]}')
 
     reporter = model.reporter
 
@@ -460,7 +506,7 @@ def train(args):
             if p.requires_grad:
                 logging.info(f'- {n}')
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    logging.info(f'Number of trainable params: {num_params}')
+    logging.info(f'Number of trainable parameters: {num_params}')
 
     model = model.to(device=device, dtype=dtype)
 
@@ -500,9 +546,11 @@ def train(args):
     setattr(optimizer, "target", reporter)
     setattr(optimizer, "serialize", lambda s: reporter.serialize(s))
 
+    args.do_mt = getattr(args, "mt_weight", 0.0) > 0.0
     use_sortagrad = args.sortagrad == -1 or args.sortagrad > 0
+    logging.info(f'ARGS: do_mt: {args.do_mt}')
     logging.info(f'use_sortagrad: {use_sortagrad}')
-
+    
     # read json data
     num_langs = len(tgt_langs)
     train_all_pairs = [None] * num_langs
@@ -511,36 +559,40 @@ def train(args):
                                                 args.do_st and
                                                 not args.use_adapters) \
                                             else args.batch_size
+    min_batch_size = args.ngpu if (args.ngpu > 1 and args.do_mt) else 1
+
     for i, jpath in enumerate(train_jpaths):
         with open(jpath, 'rb') as f:
             train_json = json.load(f)['utts']
             train_all_pairs[i] = make_batchset(train_json, batch_size,
                             args.maxlen_in, args.maxlen_out, args.minibatches,
-                            min_batch_size=1,
+                            min_batch_size=min_batch_size,
                             shortest_first=use_sortagrad,
                             count=args.batch_count,
                             batch_bins=args.batch_bins,
                             batch_frames_in=args.batch_frames_in,
                             batch_frames_out=args.batch_frames_out,
-                            batch_frames_inout=args.batch_frames_inout)         
+                            batch_frames_inout=args.batch_frames_inout,
+                            mt=args.do_mt, iaxis=1 if args.do_mt else 0)         
     for i, jpath in enumerate(valid_jpaths):
         with open(jpath, 'rb') as f:
             valid_json = json.load(f)['utts']
             valid_all_pairs[i] = make_batchset(valid_json, batch_size,
                             args.maxlen_in, args.maxlen_out, args.minibatches,
-                            min_batch_size=1,
+                            min_batch_size=min_batch_size,
                             count=args.batch_count,
                             batch_bins=args.batch_bins,
                             batch_frames_in=args.batch_frames_in,
                             batch_frames_out=args.batch_frames_out,
-                            batch_frames_inout=args.batch_frames_inout)
+                            batch_frames_inout=args.batch_frames_inout,
+                            mt=args.do_mt, iaxis=1 if args.do_mt else 0)
 
     if num_langs > 1:
         cycle_train = [cycle(x) for x in train_all_pairs]
         cycle_valid = [cycle(x) for x in valid_all_pairs]
         num_batches_train = max(len(i) for i in train_all_pairs)
         num_batches_valid = max(len(i) for i in valid_all_pairs)
-        if args.do_st and not args.use_adapters:
+        if (args.do_st or args.do_mt) and not args.use_adapters:
             cycle_train = [cycle(x) for x in train_all_pairs]
             cycle_valid = [cycle(x) for x in valid_all_pairs]
 
@@ -587,31 +639,48 @@ def train(args):
     #     m = len(batch)
     #     n_tokens = 0
     #     for j, sample in enumerate(batch):
-    #         logging.info(f'sample {j}/{m}: {sample[1]["lang"]}, {sample[1]["input"][0]["shape"][0]}')
+    #         if j == 0:
+    #             logging.info(f'sample: {sample}')
+    #         logging.info(f'sample {j}/{m}: {sample[1]["lang"]}, \
+    #                     {sample[1]["input"][0]["shape"][0]}, \
+    #                     {sample[1]["input"][1]["shape"][0]}')
     #         n_samples += 1
     #         n_tokens += sample[1]["input"][0]["shape"][0]
     #     logging.info(f'Total number of tokens in batch: {n_tokens}')
     # logging.info(f'Total number of training samples: {n_samples}')
 
-    load_tr = LoadInputsAndTargets(
-        mode='asr', load_output=True, preprocess_conf=args.preprocess_conf,
-        preprocess_args={'train': True},
-        langs_dict_tgt=args.langs_dict_tgt,
-        langs_dict_src=args.langs_dict_src,
-        src_lang=src_lang
-    )
-    load_cv = LoadInputsAndTargets(
-        mode='asr', load_output=True, preprocess_conf=args.preprocess_conf,
-        preprocess_args={'train': False},
-        langs_dict_tgt=args.langs_dict_tgt,
-        langs_dict_src=args.langs_dict_src,
-        src_lang=src_lang
-    )
+    load_tr = LoadInputsAndTargets(mode='mt' if args.do_mt else 'asr',
+            load_input=not args.do_mt,
+            preprocess_conf=args.preprocess_conf if not args.do_mt else None,
+            preprocess_args={'train': True},
+            langs_dict_tgt=args.langs_dict_tgt,
+            langs_dict_src=args.langs_dict_src,
+            src_lang=src_lang)
+    load_cv = LoadInputsAndTargets(mode='mt' if args.do_mt else 'asr',
+            load_input=not args.do_mt,
+            preprocess_conf=args.preprocess_conf if not args.do_mt else None,
+            preprocess_args={'train': False},
+            langs_dict_tgt=args.langs_dict_tgt,
+            langs_dict_src=args.langs_dict_src,
+            src_lang=src_lang)
+
+    # features, targets = load_tr(train[0])
+    # logging.info(f'features \n {features}')
+    # logging.info(f'targets \n {targets}')
 
     # Setup a converter
-    converter = CustomConverter(subsampling_factor=subsampling_factor, dtype=dtype,
-                                asr_task=args.asr_weight > 0)
-                                
+    if args.do_mt:
+        converter = MtCustomConverter()
+    else:
+        converter = StAsrCustomConverter(subsampling_factor=subsampling_factor, 
+                                        dtype=dtype,
+                                        asr_task=args.asr_weight > 0)
+    # xs_pad, ilens, ys_pad, ys_pad_asr = converter([load_tr(train[0])])
+    # logging.info(f'xs_pad: {xs_pad}')
+    # logging.info(f'ilens: {ilens}')
+    # logging.info(f'ys_pad: {ys_pad}')
+    # logging.info(f'ys_pad_asr: {ys_pad_asr}')
+
     # hack to make batchsize argument as 1
     # actual batchsize is included in a list
     # default collate function converts numpy array to pytorch tensor
@@ -625,11 +694,13 @@ def train(args):
     train_iter = {'main': ChainerDataLoader(
         dataset=TransformDataset(train, lambda data: converter([load_tr(data)])),
         batch_size=1, num_workers=n_iter_processes,
-        shuffle=not use_sortagrad, collate_fn=lambda x: x[0], pin_memory=False)}
+        shuffle=not use_sortagrad, collate_fn=lambda x: x[0], 
+        pin_memory=False)}
     valid_iter = {'main': ChainerDataLoader(
         dataset=TransformDataset(valid, lambda data: converter([load_cv(data)])),
         batch_size=1, shuffle=False, collate_fn=lambda x: x[0],
-        num_workers=n_iter_processes, pin_memory=False)}
+        num_workers=n_iter_processes, 
+        pin_memory=False)}
 
     # Set up a trainer
     updater = CustomUpdater(
@@ -680,23 +751,30 @@ def train(args):
                                             'epoch', file_name='acc.png'))
         trainer.extend(extensions.PlotReport(['main/bleu', 'validation/main/bleu'],
                                             'epoch', file_name='bleu.png'))
+        trainer.extend(extensions.PlotReport(['main/ppl', 'validation/main/ppl'],
+                                            'epoch', file_name='ppl.png'))
 
     # Save best models
-    key_to_save = 'validation/main/acc' if args.do_st else 'validation/main/acc_asr'
+    key_to_save = 'validation/main/acc' if (args.do_st or args.do_mt) \
+                                        else 'validation/main/acc_asr'
     if args.report_interval_iters > 0:
-        trainer.extend(snapshot_object(model, 'model.loss.best'),
-                    trigger=MinValueTrigger('validation/main/loss',
-                                            trigger=(args.report_interval_iters, 'iteration'),
-                                            best_value=None))
-        trainer.extend(snapshot_object(model, 'model.acc.best'),
-                    trigger=MaxValueTrigger(key_to_save,
-                                            trigger=(args.report_interval_iters, 'iteration'),
-                                            best_value=None))
+        trainer.extend(
+            snapshot_object(model, 'model.loss.best'),
+            trigger=MinValueTrigger('validation/main/loss',
+                                    trigger=(args.report_interval_iters, 'iteration'),
+                                    best_value=None))
+        trainer.extend(
+            snapshot_object(model, 'model.acc.best'),
+            trigger=MaxValueTrigger(key_to_save,
+                                    trigger=(args.report_interval_iters, 'iteration'),
+                                    best_value=None))
     else:
-        trainer.extend(snapshot_object(model, 'model.loss.best'),
-                    trigger=MinValueTrigger('validation/main/loss', best_value=None))
-        trainer.extend(snapshot_object(model, 'model.acc.best'),
-                    trigger=MaxValueTrigger(key_to_save, best_value=None))
+        trainer.extend(
+            snapshot_object(model, 'model.loss.best'),
+            trigger=MinValueTrigger('validation/main/loss', best_value=None))
+        trainer.extend(
+            snapshot_object(model, 'model.acc.best'),
+            trigger=MaxValueTrigger(key_to_save, best_value=None))
 
     # save snapshot which contains model and optimizer states
     if args.save_interval_iters > 0:
@@ -747,13 +825,22 @@ def train(args):
 
     # Write a log of evaluation statistics for each epoch
     trainer.extend(extensions.LogReport(trigger=(args.report_interval_iters, 'iteration')))
-    report_keys = ['epoch', 'iteration', 'main/loss', 'main/loss_st', 'main/loss_asr',
-                   'validation/main/loss', 'validation/main/loss_st', 'validation/main/loss_asr',
-                   'main/acc', 'validation/main/acc']
+    report_keys = ['epoch', 'iteration', 
+                    'main/loss', 'validation/main/loss',  
+                    'main/acc', 'validation/main/acc',
+                    'elapsed_time']
+    if args.do_st:
+        report_keys.append('main/loss_st')
+        report_keys.append('validation/main/loss_st')
     if args.asr_weight > 0:
         report_keys.append('main/acc_asr')
         report_keys.append('validation/main/acc_asr')
-    report_keys += ['elapsed_time']
+        report_keys.append('main/loss_asr')
+        report_keys.append('validation/main/loss_asr')
+    if args.do_mt:
+        report_keys.append('main/ppl')
+        report_keys.append('validation/main/ppl')
+
     if args.opt == 'adadelta':
         trainer.extend(extensions.observe_value(
             'eps', lambda trainer: trainer.updater.get_optimizer('main').param_groups[0]["eps"]),
@@ -906,11 +993,11 @@ def trans(args):
                 elif args.recog:
                     logging.info('***** Recognize ONLY ******')
                     nbest_hyps_asr = model.recognize(feat, args, train_args.char_list_src, rnnlm)
-                    new_js[name] = add_results_to_json(js[name], nbest_hyps_asr, train_args.char_list_src)
+                    new_js[name] = add_results_to_json(js[name], nbest_hyps_asr, train_args.char_list_src, output_idx=1)
                 elif args.trans:
                     logging.info('***** Translate ONLY ******')
                     nbest_hyps = model.translate(feat, args, train_args.char_list_tgt, rnnlm)
-                    new_js[name] = add_results_to_json(js[name], nbest_hyps, train_args.char_list_tgt)
+                    new_js[name] = add_results_to_json(js[name], nbest_hyps, train_args.char_list_tgt, output_idx=0)
                 else:
                     raise NotImplementedError
 

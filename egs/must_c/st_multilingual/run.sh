@@ -753,29 +753,32 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
         fi
 
         # Compute BLEU
-        if [[ ! -s "${expdir}/${decode_dir}/result.tc.txt" ]]; then
-            echo "Compute BLEU..."
-            chmod +x local/score_bleu_st.sh
-            local/score_bleu_st.sh --case ${tgt_case} --bpe ${nbpe} --bpemodel ${bpemodel_tgt}.model \
-                ${expdir}/${decode_dir} ${lg_tgt} ${dict_tgt} ${dict_src}
-        else
-            echo "BLEU has been computed."
-            cat ${expdir}/${decode_dir}/result.tc.txt
+        if [[ $tag != *"asr_model"* ]]; then
+            if [[ ! -s "${expdir}/${decode_dir}/result.tc.txt" ]]; then
+                echo "Compute BLEU..."
+                chmod +x local/score_bleu_st.sh
+                local/score_bleu_st.sh --case ${tgt_case} --bpe ${nbpe} --bpemodel ${bpemodel_tgt}.model \
+                    ${expdir}/${decode_dir} ${lg_tgt} ${dict_tgt} ${dict_src}
+            else
+                echo "BLEU has been computed."
+                cat ${expdir}/${decode_dir}/result.tc.txt
+            fi
         fi
 
         # Compute WER
-        if [[ ! -s "${expdir}/${decode_dir}/result.wrd.wer.txt" ]]; then
-            echo "Compute WER score..."
-            # chmod +x local/score_sclite_st.sh
-            idx=1
-            if [[ $tag == *"asr_model"* ]]; then
-                idx=0
+        if [[ $tag != *"mt_model"* ]]; then
+            if [[ ! -s "${expdir}/${decode_dir}/result.wrd.wer.txt" ]]; then
+                echo "Compute WER score..."
+                idx=1
+                if [[ $tag == *"asr_model"* ]]; then
+                    idx=0
+                fi
+                local/score_sclite_st.sh --case ${src_case} --bpe ${nbpe_src} --bpemodel ${bpemodel_src}.model --wer true \
+                    ${expdir}/${decode_dir} ${dict_src} ${idx}
+            else
+                echo "WER has been computed."
+                cat ${expdir}/${decode_dir}/result.wrd.wer.txt
             fi
-            local/score_sclite_st.sh --case ${src_case} --bpe ${nbpe_src} --bpemodel ${bpemodel_src}.model --wer true \
-                ${expdir}/${decode_dir} ${dict_src} ${idx}
-        else
-            echo "WER has been computed."
-            cat ${expdir}/${decode_dir}/result.wrd.wer.txt
         fi
     ) &
     pids+=($!) # store background pids

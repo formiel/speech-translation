@@ -193,7 +193,8 @@ class TimeLimitTrigger(object):
 
     def __init__(self, args):
         self._max_trigger = util.get_trigger((args.epochs, 'epoch'))
-        self._interval_trigger = util.get_trigger((args.save_interval_iters, 'iteration'))
+        key_trigger = 'iteration' if args.save_interval_iters > 0 else 'epoch'
+        self._interval_trigger = util.get_trigger((args.save_interval_iters, key_trigger))
         self.start_time = args.start_time
         self.time_limit = args.time_limit * 60
         self.max_epochs = args.epochs

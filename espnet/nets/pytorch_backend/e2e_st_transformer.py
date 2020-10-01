@@ -317,7 +317,7 @@ class E2E(STInterface, torch.nn.Module):
                 self.decoder_asr = self.decoder
 
         if not self.use_joint_dict:
-            if self.do_st:
+            if self.do_st or self.do_mt:
                 self.output_layer = torch.nn.Linear(args.adim, odim_tgt)
             if self.do_asr:
                 self.output_layer_asr = torch.nn.Linear(args.adim, odim_src)
@@ -635,7 +635,10 @@ class E2E(STInterface, torch.nn.Module):
         """
         self.eval()
         x = torch.as_tensor(x).unsqueeze(0)
-        enc_output, _ = self.encoder(x, None)
+        if self.do_mt:
+            enc_output, _ = self.encoder_mt(x, None)
+        else:
+            enc_output, _ = self.encoder(x, None)
         return enc_output.squeeze(0)
 
     def recognize(self, x, recog_args, char_list=None, rnnlm=None, use_jit=False):
@@ -659,8 +662,8 @@ class E2E(STInterface, torch.nn.Module):
 
         logging.info('input lengths: ' + str(h.size(0)))
         # search parms
-        beam = recog_args.beam_size
-        penalty = recog_args.penalty
+        beam = recog_args.beam_size_asr
+        penalty = recog_args.penalty_asr
         ctc_weight = recog_args.ctc_weight
 
         # preprare sos
@@ -673,12 +676,11 @@ class E2E(STInterface, torch.nn.Module):
         logging.info(f'y: {y}')
         vy = h.new_zeros(1).long()
 
-        if recog_args.maxlenratio == 0:
+        if recog_args.maxlenratio_asr == 0:
             maxlen = h.shape[0]
         else:
-            # maxlen >= 1
-            maxlen = max(1, int(recog_args.maxlenratio * h.size(0)))
-        minlen = int(recog_args.minlenratio * h.size(0))
+            maxlen = max(1, int(recog_args.maxlenratio_asr * h.size(0)))
+        minlen = int(recog_args.minlenratio_asr * h.size(0))
         logging.info('max output length: ' + str(maxlen))
         logging.info('min output length: ' + str(minlen))
 
@@ -879,8 +881,7 @@ class E2E(STInterface, torch.nn.Module):
             hyp = {'score': 0.0, 'yseq': [y]}
         hyps = [hyp]
         ended_hyps = []
-
-        
+     
         traced_decoder = None
         for i in six.moves.range(maxlen):
             logging.debug('position ' + str(i))
@@ -900,7 +901,10 @@ class E2E(STInterface, torch.nn.Module):
                                                          (ys, ys_mask, enc_output))
                     local_att_scores = traced_decoder(ys, ys_mask, enc_output)[0]
                 else:
-                    local_att_scores = self.decoder.forward_one_step(ys, ys_mask, enc_output)[0]
+                    if self.do_mt:
+                        local_att_scores = self.decoder_mt.forward_one_step(ys, ys_mask, enc_output)[0]
+                    else:
+                        local_att_scores = self.decoder.forward_one_step(ys, ys_mask, enc_output)[0]
                 if not self.use_joint_dict:
                     local_att_scores = self.output_layer(local_att_scores)
 

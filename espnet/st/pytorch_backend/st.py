@@ -365,6 +365,7 @@ def train(args):
         assert args.use_lid
     tgt_langs = sorted([p.split('-')[-1] for p in lang_pairs])
     src_lang = lang_pairs[0].split('-')[0]
+    args.src_lang = src_lang
     
     # get paths to data
     if args.one_to_many:
@@ -463,6 +464,11 @@ def train(args):
         torch_load(args.rnnlm, rnnlm)
         model.rnnlm = rnnlm
 
+    args.do_mt = getattr(args, "mt_weight", 0.0) > 0.0
+    use_sortagrad = args.sortagrad == -1 or args.sortagrad > 0
+    logging.info(f'ARGS: do_mt: {args.do_mt}')
+    logging.info(f'use_sortagrad: {use_sortagrad}')
+
     # write model config
     if not os.path.exists(args.outdir):
         os.makedirs(args.outdir)
@@ -546,11 +552,6 @@ def train(args):
     # FIXME: TOO DIRTY HACK
     setattr(optimizer, "target", reporter)
     setattr(optimizer, "serialize", lambda s: reporter.serialize(s))
-
-    args.do_mt = getattr(args, "mt_weight", 0.0) > 0.0
-    use_sortagrad = args.sortagrad == -1 or args.sortagrad > 0
-    logging.info(f'ARGS: do_mt: {args.do_mt}')
-    logging.info(f'use_sortagrad: {use_sortagrad}')
     
     # read json data
     num_langs = len(tgt_langs)
@@ -924,11 +925,24 @@ def trans(args):
         js = json.load(f)['utts']
     new_js = {}
 
+    # load_inputs_and_targets = LoadInputsAndTargets(
+    #     mode='asr', load_output=False, sort_in_input_length=False,
+    #     preprocess_conf=train_args.preprocess_conf
+    #     if args.preprocess_conf is None else args.preprocess_conf,
+    #     preprocess_args={'train': False})
+    
     load_inputs_and_targets = LoadInputsAndTargets(
-        mode='asr', load_output=False, sort_in_input_length=False,
-        preprocess_conf=train_args.preprocess_conf
-        if args.preprocess_conf is None else args.preprocess_conf,
-        preprocess_args={'train': False})
+            mode='mt' if train_args.do_mt else 'asr',
+            load_input=not train_args.do_mt,
+            load_output=False,
+            sort_in_input_length=False,
+            preprocess_conf=args.preprocess_conf if (
+                not train_args.do_mt and args.preprocess_conf is None) 
+                else  args.preprocess_conf,
+            preprocess_args={'train': False},
+            langs_dict_tgt=train_args.langs_dict_tgt,
+            langs_dict_src=train_args.langs_dict_src,
+            src_lang=train_args.src_lang)
 
     # Change to evaluation mode
     model.eval()
@@ -938,7 +952,12 @@ def trans(args):
             for idx, name in enumerate(js.keys(), 1):
                 logging.info('| (%d/%d) decoding ' + name, idx, len(js.keys()))
                 batch = [(name, js[name])]
-                feat = load_inputs_and_targets(batch)[0][0]
+                if train_args.do_mt:
+                    feat = load_inputs_and_targets(batch)
+                else:
+                    feat = load_inputs_and_targets(batch)[0][0]
+                logging.info(f'feat: {feat}')
+                return
                 if args.recog_and_trans: # for dual decoders
                     logging.info('***** Dual decoders: Recognize and Translate simultaneously ******')
                     if args.beam_search_type == 'sum':

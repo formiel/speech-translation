@@ -925,24 +925,11 @@ def trans(args):
         js = json.load(f)['utts']
     new_js = {}
 
-    # load_inputs_and_targets = LoadInputsAndTargets(
-    #     mode='asr', load_output=False, sort_in_input_length=False,
-    #     preprocess_conf=train_args.preprocess_conf
-    #     if args.preprocess_conf is None else args.preprocess_conf,
-    #     preprocess_args={'train': False})
-    
     load_inputs_and_targets = LoadInputsAndTargets(
-            mode='mt' if train_args.do_mt else 'asr',
-            load_input=not train_args.do_mt,
-            load_output=False,
-            sort_in_input_length=False,
-            preprocess_conf=args.preprocess_conf if (
-                not train_args.do_mt and args.preprocess_conf is None) 
-                else  args.preprocess_conf,
-            preprocess_args={'train': False},
-            langs_dict_tgt=train_args.langs_dict_tgt,
-            langs_dict_src=train_args.langs_dict_src,
-            src_lang=train_args.src_lang)
+        mode='asr', load_output=False, sort_in_input_length=False,
+        preprocess_conf=train_args.preprocess_conf
+        if args.preprocess_conf is None else args.preprocess_conf,
+        preprocess_args={'train': False})
 
     # Change to evaluation mode
     model.eval()
@@ -952,14 +939,9 @@ def trans(args):
             for idx, name in enumerate(js.keys(), 1):
                 logging.info('| (%d/%d) decoding ' + name, idx, len(js.keys()))
                 batch = [(name, js[name])]
-                if train_args.do_mt:
-                    feat = load_inputs_and_targets(batch)
-                else:
-                    feat = load_inputs_and_targets(batch)[0][0]
-                # logging.info(f'feat: {feat}')
-                # return
+                feat = load_inputs_and_targets(batch)[0][0]
                 if args.recog_and_trans: # for dual decoders
-                    logging.info('***** Dual decoders: Recognize and Translate simultaneously ******')
+                    logging.info('***** Recognize and Translate simultaneously ******')
                     if args.beam_search_type == 'sum':
                         logging.info('=== Beam search by sum of scores ===')
                         nbest_hyps = model.recognize_and_translate_sum(
@@ -979,7 +961,6 @@ def trans(args):
                                                     train_args.char_list_tgt,
                                                     train_args.char_list_src)
                     elif args.beam_search_type == 'half-joint':
-                        logging.info('=== Beam search by sum of scores ===')
                         nbest_hyps = model.recognize_and_translate_half_joint(
                                                     feat, args, 
                                                     train_args.char_list_tgt,
@@ -996,28 +977,49 @@ def trans(args):
                                                     train_args.char_list_tgt,
                                                     train_args.char_list_src,
                                                     rnnlm)
-                        new_js[name] = add_results_to_json(
-                                js[name], nbest_hyps, train_args.char_list_tgt)
+                        new_js[name] = add_results_to_json(js[name], 
+                                                           nbest_hyps, 
+                                                           train_args.char_list_tgt)
                         new_js[name]['output'].append(add_results_to_json(
-                                js[name], nbest_hyps_asr, train_args.char_list_src, 
-                                output_idx=1)['output'][0])
+                                                        js[name], nbest_hyps_asr, 
+                                                        train_args.char_list_src, 
+                                                        output_idx=1)['output'][0])
                     else:
                         raise NotImplementedError
                 elif args.recog and args.trans:
                     logging.info('***** Recognize and Translate separately ******')
-                    nbest_hyps_asr = model.recognize(feat, args, train_args.char_list_src, rnnlm)
-                    nbest_hyps = model.translate(feat, args, train_args.char_list_tgt, rnnlm)
-                    new_js[name] = add_results_to_json(js[name], nbest_hyps, train_args.char_list_tgt)
-                    new_js[name]['output'].append(add_results_to_json(
-                        js[name], nbest_hyps_asr, train_args.char_list_src, output_idx=1)['output'][0])
+                    nbest_hyps_asr = model.recognize(feat, args, 
+                                                     train_args.char_list_src, 
+                                                     rnnlm)
+                    nbest_hyps = model.translate(feat, args, 
+                                                 train_args.char_list_tgt, 
+                                                 rnnlm)
+                    new_js[name] = add_results_to_json(js[name], 
+                                                       nbest_hyps, 
+                                                       train_args.char_list_tgt)
+                    new_js[name]['output'].append(
+                        add_results_to_json(js[name], 
+                                            nbest_hyps_asr, 
+                                            train_args.char_list_src, 
+                                            output_idx=1)['output'][0])
                 elif args.recog:
-                    logging.info('***** Recognize ONLY ******')
-                    nbest_hyps_asr = model.recognize(feat, args, train_args.char_list_src, rnnlm)
-                    new_js[name] = add_results_to_json(js[name], nbest_hyps_asr, train_args.char_list_src, output_idx=1)
+                    logging.info('***** Recognize only ******')
+                    nbest_hyps_asr = model.recognize(feat, args, 
+                                                     train_args.char_list_src, 
+                                                     rnnlm)
+                    new_js[name] = add_results_to_json(js[name], 
+                                                       nbest_hyps_asr, 
+                                                       train_args.char_list_src, 
+                                                       output_idx=1)
                 elif args.trans:
-                    logging.info('***** Translate ONLY ******')
-                    nbest_hyps = model.translate(feat, args, train_args.char_list_tgt, rnnlm)
-                    new_js[name] = add_results_to_json(js[name], nbest_hyps, train_args.char_list_tgt, output_idx=0)
+                    logging.info('***** Translate only ******')
+                    nbest_hyps = model.translate(feat, args, 
+                                                 train_args.char_list_tgt, 
+                                                 rnnlm)
+                    new_js[name] = add_results_to_json(js[name], 
+                                                       nbest_hyps, 
+                                                       train_args.char_list_tgt, 
+                                                       output_idx=0)
                 else:
                     raise NotImplementedError
 

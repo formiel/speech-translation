@@ -956,8 +956,8 @@ def trans(args):
                     feat = load_inputs_and_targets(batch)
                 else:
                     feat = load_inputs_and_targets(batch)[0][0]
-                logging.info(f'feat: {feat}')
-                return
+                # logging.info(f'feat: {feat}')
+                # return
                 if args.recog_and_trans: # for dual decoders
                     logging.info('***** Dual decoders: Recognize and Translate simultaneously ******')
                     if args.beam_search_type == 'sum':

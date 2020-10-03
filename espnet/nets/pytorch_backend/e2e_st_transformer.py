@@ -29,7 +29,8 @@ from espnet.nets.pytorch_backend.e2e_mt import Reporter as MTReporter
 from espnet.nets.pytorch_backend.nets_utils import (
     get_subsample,
     make_pad_mask, pad_list,
-    th_accuracy
+    th_accuracy,
+    to_device
 ) 
 
 from espnet.nets.pytorch_backend.transformer.add_sos_eos import add_sos_eos
@@ -852,8 +853,19 @@ class E2E(STInterface, torch.nn.Module):
             y = char_list.index(tgt_lang_id)
             logging.info(f'tgt_lang_id: {tgt_lang_id} - y: {y}')
 
+            src_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[0])
+            src_lang_id = char_list.index(src_lang_id)
+            logging.info(f'src_lang_id: {src_lang_id}')
+
+            if self.do_mt:
+                x[0].insert(0, src_lang_id)
+
         logging.info('<sos> index: ' + str(y))
         logging.info('<sos> mark: ' + char_list[y])
+
+        if self.do_mt:
+            x = to_device(self, torch.from_numpy(np.fromiter(map(int, x[0]), dtype=np.int64)))
+            xs_pad = x.unsqueeze(0)
 
         enc_output = self.encode(x).unsqueeze(0)
         h = enc_output.squeeze(0)

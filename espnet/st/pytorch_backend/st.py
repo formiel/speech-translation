@@ -925,11 +925,15 @@ def trans(args):
         js = json.load(f)['utts']
     new_js = {}
 
-    load_inputs_and_targets = LoadInputsAndTargets(
-        mode='asr', load_output=False, sort_in_input_length=False,
-        preprocess_conf=train_args.preprocess_conf
-        if args.preprocess_conf is None else args.preprocess_conf,
-        preprocess_args={'train': False})
+    train_args.do_mt = getattr(train_args, 
+                              "do_mt", 
+                              getattr(train_args, "mt_weight", 0.0) > 0.0)
+    if not train_args.do_mt:
+        load_inputs_and_targets = LoadInputsAndTargets(
+            mode='asr', load_output=False, sort_in_input_length=False,
+            preprocess_conf=train_args.preprocess_conf
+            if args.preprocess_conf is None else args.preprocess_conf,
+            preprocess_args={'train': False})
 
     # Change to evaluation mode
     model.eval()
@@ -938,8 +942,12 @@ def trans(args):
         with torch.no_grad():
             for idx, name in enumerate(js.keys(), 1):
                 logging.info('| (%d/%d) decoding ' + name, idx, len(js.keys()))
-                batch = [(name, js[name])]
-                feat = load_inputs_and_targets(batch)[0][0]
+                if train_args.do_mt:
+                    feat = [js[name]['output'][1]['tokenid'].split()]
+                else:
+                    batch = [(name, js[name])]
+                    feat = load_inputs_and_targets(batch)[0][0]
+
                 if args.recog_and_trans: # for dual decoders
                     logging.info('***** Recognize and Translate simultaneously ******')
                     if args.beam_search_type == 'sum':

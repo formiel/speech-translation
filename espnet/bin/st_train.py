@@ -245,11 +245,13 @@ def get_parser(parser=None, required=True):
                               replace <sos> token in the decoder')
     parser.add_argument('--num-decoders', choices=[1, 2], default=2, type=int,
                         help='Number of decoders in multilingual ST.')
-    # adapters related
+    # fine-tuning related
     parser.add_argument('--use-adapters', default=False, type=strtobool,
                         help='Use adapters for fine-tuning pre-trained model.')
     parser.add_argument('--train-adapters', default=False, type=strtobool,
                         help='Train adapters from scratch.')
+    parser.add_argument('--use-multi-dict', default=False, type=strtobool,
+                        help='')
     parser.add_argument('--trainable-modules', default="adapter", type=str,
                         help='Modules to be updated in adapter-based finetuning.')
     parser.add_argument('--use-adapters-for-asr', default=False, type=strtobool,

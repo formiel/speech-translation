@@ -46,19 +46,21 @@ asr_model=
 st_model=
 init_from_decoder_asr=
 
-# training and adapters related
+# training related
 preprocess_config=
 do_st=                       # if false, train ASR model
 use_adapters=                # if true, use adapter for fine-tuning
 train_adapters=              # if true, train adapter from scratch
 use_adapters_for_asr=        # if true, then add adapters for transcription
 use_adapters_in_enc=         # if true, use adapters in encoder
+do_mt=                       # if true then train MT model
 early_stop_criterion=validation/main/acc
 
 # preprocessing related
-src_case=lc.rm              # lc.rm: lowercase with punctuation removal
-tgt_case=tc                 # tc: truecase
+src_case=lc.rm      # lc.rm: lowercase with punctuation removal
+tgt_case=tc         # tc: truecase
 use_joint_dict=     # if true, use one dictionary for source and target
+use_multi_dict=     # if true, use dictionary for all target languages
 
 # bpemode (unigram or bpe)
 bpemode=bpe
@@ -71,6 +73,7 @@ trans_model=      # set a model to be used for decoding e.g. 'model.acc.best'
 trans_set=        # data set to decode
 max_iter_eval=    # get best model up to this iteration
 min_iter_eval=    # get best model from this iteration
+remove_non_verbal_eval=true  # if true, then remove non-verbal tokens in evaluation
 
 # model average related (only for transformer)
 n_average=1                  # the number of ST models to be averaged,
@@ -117,8 +120,15 @@ elif (( $lang_count == 1 )); then
 else
     suffix="lgs_${tgt_langs}"
 fi
-if [[ ${train_adapters} == "true" ]]; then
+if [[ ${train_adapters} == "true" ]] || [[ ${use_multi_dict} == "true" ]]; then
     suffix="lgs_all8"
+fi
+
+# suffix for mt model
+if [[ ${do_mt} == "true" ]]; then
+    suffix_mt="_do_mt"
+else
+    suffix_mt=""
 fi
 
 echo "*** General parameters ***"
@@ -133,8 +143,10 @@ echo "| nbpe: ${nbpe}"
 echo "| nbpe_src: ${nbpe_src}"
 echo "| dictionary prefix: ${dprefix}"
 echo "| dictionary suffix: ${suffix}"
+echo "| mt model suffix: ${suffix_mt}"
 echo "| use language ID: ${use_lid}"
 echo "| use adapters: ${use_adapters}"
+echo "| use_multi_dict: ${use_multi_dict}"
 echo "| train adapters: ${train_adapters}"
 echo "| train_config: ${train_config}"
 echo "| preprocess_config: ${preprocess_config}"
@@ -152,13 +164,12 @@ set -e
 set -u
 set -o pipefail
 
-# Train, dev, and translation sets
+# Train, dev, and trans sets
 train_set=train_sp.en-${tgt_langs}
 train_dev=dev.en-${tgt_langs}
 
 train_set_dict=${train_set}
-train_dev_dict=${train_dev}
-if [[ ${train_adapters} == "true" ]]; then
+if [[ ${train_adapters} == "true" ]] || [[ ${use_multi_dict} == "true" ]]; then
     train_set_dict=train_sp.en-de_es_fr_it_nl_pt_ro_ru
 fi
 
@@ -290,10 +301,10 @@ fi
 
 
 if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
-    dname=${train_set}_${bpemode}${nbpe}_${tgt_case}_${suffix}
+    dname=${train_set}_${bpemode}${nbpe}_${tgt_case}_${suffix}${suffix_mt}
     bpemodel=data/lang_1spm/use_${dprefix}/${dname}
-    nlsyms=data/lang_1spm/use_${dprefix}/${train_set}_non_lang_syms_${tgt_case}_${suffix}
-    nlsyms_tmp=data/lang_1spm/use_${dprefix}/${train_set}_non_lang_syms_tmp_${tgt_case}_${suffix}
+    nlsyms=data/lang_1spm/use_${dprefix}/${train_set}_non_lang_syms_${tgt_case}_${suffix}${suffix_mt}
+    nlsyms_tmp=data/lang_1spm/use_${dprefix}/${train_set}_non_lang_syms_tmp_${tgt_case}_${suffix}${suffix_mt}
 
     ### Task dependent. You have to check non-linguistic symbols used in the corpus.
     echo "***** stage 2: Dictionary and Json Data Preparation *****"
@@ -327,7 +338,11 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
         special_symbols="<unk> 1"
         if [[ ${use_lid} == "true" ]]; then
             i=2
-            all_langs=$(echo "${tgt_langs}_en" | tr '_' ' ')
+            if [[ ${do_mt} == "true" ]]; then
+                all_langs=$(echo "${tgt_langs}" | tr '_' ' ') # TODO: test this
+            else
+                all_langs=$(echo "${tgt_langs}_en" | tr '_' ' ')
+            fi
             all_langs_sorted=$(echo ${all_langs[*]}| tr " " "\n" | sort -n | tr "\n" " ")
             echo "all langs sorted: ${all_langs_sorted}"
             for lang in $(echo "${all_langs_sorted}" | tr '_' ' '); do
@@ -341,7 +356,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
 
         offset=$(wc -l < ${dict})
         echo "| offset= ${offset}"
-        input_path=data/lang_1spm/use_${dprefix}/input_${dprefix}_${bpemode}${nbpe}_en-${tgt_langs}_${tgt_case}_${suffix}.txt
+        input_path=data/lang_1spm/use_${dprefix}/input_${dprefix}_${bpemode}${nbpe}_en-${tgt_langs}_${tgt_case}_${suffix}${suffix_mt}.txt
         if [ -f ${input_path} ]; then
             echo "remove existing input text file"
             rm ${input_path}
@@ -361,7 +376,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
             train_dev_lang=dev.en-${lang}.${lang}
             feat_tr_dir_lang=${dumpdir}/${train_set_lang}/delta${do_delta}
             feat_dt_dir_lang=${dumpdir}/${train_dev_lang}/delta${do_delta}
-            jname=data_${dprefix}_en-${lang}_${bpemode}${nbpe}_${tgt_case}_${suffix}.json
+            jname=data_${dprefix}_en-${lang}_${bpemode}${nbpe}_${tgt_case}_${suffix}${suffix_mt}.json
 
             data2json.sh --nj 16 --feat ${feat_tr_dir_lang}/feats.scp --text data/${train_set_lang}/text.${tgt_case} --bpecode ${bpemodel}.model --lang ${lang} \
                 data/${train_set_lang} ${dict} > ${feat_tr_dir_lang}/${jname}
@@ -390,9 +405,9 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
     # Create separate dictionaries: 1 for source transcription, 1 joint for all target langs
     else
         echo "*** Create SEPARATE dictionaries for source and target languages ***"
-        nlsyms=data/lang_1spm/use_${dprefix}/${train_set}_non_lang_syms_${tgt_case}_${suffix}
-        nlsyms_tmp=data/lang_1spm/use_${dprefix}/${train_set}_non_lang_syms_tmp_${tgt_case}_${suffix} 
-        dname=${train_set}_${bpemode}_src${nbpe_src}${src_case}_tgt${nbpe}${tgt_case}_${suffix}
+        nlsyms=data/lang_1spm/use_${dprefix}/${train_set}_non_lang_syms_${tgt_case}_${suffix}${suffix_mt}
+        nlsyms_tmp=data/lang_1spm/use_${dprefix}/${train_set}_non_lang_syms_tmp_${tgt_case}_${suffix}${suffix_mt} 
+        dname=${train_set}_${bpemode}_src${nbpe_src}${src_case}_tgt${nbpe}${tgt_case}_${suffix}${suffix_mt}
         bpemodel=data/lang_1spm/use_${dprefix}/${dname}
 
         dict_src=data/lang_1spm/use_${dprefix}/${dname}.src.txt
@@ -445,7 +460,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
 
         offset=$(wc -l < ${dict_tgt})
         echo "| offset= ${offset}"
-        input_path=data/lang_1spm/use_${dprefix}/input_${dprefix}_en-${tgt_langs}_tgt_${tgt_case}_${suffix}.txt
+        input_path=data/lang_1spm/use_${dprefix}/input_${dprefix}_en-${tgt_langs}_tgt_${tgt_case}_${suffix}${suffix_mt}.txt
         if [ -f ${input_path} ]; then
             echo "remove existing input text file"
             rm ${input_path}
@@ -464,7 +479,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
             train_dev_lang=dev.en-${lang}.${lang}
             feat_tr_dir_lang=${dumpdir}/${train_set_lang}/delta${do_delta}
             feat_dt_dir_lang=${dumpdir}/${train_dev_lang}/delta${do_delta}
-            jname=data_${dprefix}_en-${lang}_${bpemode}_src${nbpe_src}${src_case}_tgt${nbpe}${tgt_case}_${suffix}.json
+            jname=data_${dprefix}_en-${lang}_${bpemode}_src${nbpe_src}${src_case}_tgt${nbpe}${tgt_case}_${suffix}${suffix_mt}.json
 
             data2json.sh --nj 16 --feat ${feat_tr_dir_lang}/feats.scp --text data/${train_set_lang}/text.${tgt_case} --bpecode ${bpemodel_tgt}.model --lang ${lang} \
                 data/${train_set_lang} ${dict_tgt} > ${feat_tr_dir_lang}/${jname}
@@ -499,6 +514,9 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
         # echo "<unk> 1" > ${dict} # <unk> must be 1, 0 will be used for "blank" in CTC
         if [[ ${use_lid} == "true" ]]; then
             special_symbols="<unk> 1; <2en> 2"
+            if [[ ${do_mt} == "true" ]]; then
+                special_symbols="<unk> 1" # TODO: test this
+            fi
         else
             special_symbols="<unk> 1"
         fi
@@ -508,7 +526,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
 
         offset=$(wc -l < ${dict_src})
         echo "| offset= ${offset}"
-        input_path=data/lang_1spm/use_${dprefix}/input_${dprefix}_en-${tgt_langs}_src_${src_case}_${suffix}.txt
+        input_path=data/lang_1spm/use_${dprefix}/input_${dprefix}_en-${tgt_langs}_src_${src_case}_${suffix}${suffix_mt}.txt
         if [ -f ${input_path} ]; then
             echo "remove existing input text file"
             rm ${input_path}
@@ -526,7 +544,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
             train_set_lang=train_sp.en-${lang}.${lang}
             train_dev_lang=dev.en-${lang}.${lang}
             trans_set_lang="tst-COMMON.en-${lang}.${lang} tst-HE.en-${lang}.${lang}"
-            jname=data_${dprefix}_en-${lang}_${bpemode}_src${nbpe_src}${src_case}_tgt${nbpe}${tgt_case}_${suffix}.json
+            jname=data_${dprefix}_en-${lang}_${bpemode}_src${nbpe_src}${src_case}_tgt${nbpe}${tgt_case}_${suffix}${suffix_mt}.json
 
             sets="${train_set_lang} ${train_dev_lang}"
             sets+=" "${trans_set_lang}
@@ -573,11 +591,15 @@ echo "| tensorboard_dir: ${tensorboard_dir}"
 # Data folders
 datadir_tmp=${datadir}
 datadir=${datadir_tmp}/${tgt_langs}/use_${dprefix}/src${nbpe_src}_tgt${nbpe}
-if (( $lang_count == 1 )) && [[ ${train_adapters} == "true" ]]; then
+if [[ ${use_multi_dict} == "true" ]]; then
+    datadir=${datadir_tmp}/de_es_fr_it_nl_pt_ro_ru/use_${dprefix}/src${nbpe_src}_tgt${nbpe}
+elif (( $lang_count == 1 )) && [[ ${train_adapters} == "true" ]]; then
     datadir=${datadir_tmp}/${tgt_langs}_train_adapters/use_${dprefix}/src${nbpe_src}_tgt${nbpe}
-fi
-if (( $lang_count == 1 )) && [[ ${train_adapters} == "false" ]]; then
+elif (( $lang_count == 1 )) && [[ ${train_adapters} == "false" ]]; then
     datadir=${datadir}/use_lid_${use_lid}
+fi
+
+if (( $lang_count == 1 )) && [[ ${train_adapters} == "false" ]]; then
     train_json_dir=${datadir}/train_sp/en-${tgt_langs}.json
     val_json_dir=${datadir}/dev/en-${tgt_langs}.json 
 else
@@ -653,6 +675,7 @@ if [[ ${stage} -le 4 ]] && [[ ${stop_stage} -ge 4 ]]; then
         --init-from-decoder-asr ${init_from_decoder_asr} \
         --use-adapters ${use_adapters} \
         --train-adapters ${train_adapters} \
+        --use-multi-dict ${use_multi_dict} \
         --use-adapters-for-asr ${use_adapters_for_asr} \
         --use-adapters-in-enc ${use_adapters_in_enc}
         # --enc-init ${asr_model} \
@@ -757,7 +780,9 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
             if [[ ! -s "${expdir}/${decode_dir}/result.tc.txt" ]]; then
                 echo "Compute BLEU..."
                 chmod +x local/score_bleu_st.sh
-                local/score_bleu_st.sh --case ${tgt_case} --bpe ${nbpe} --bpemodel ${bpemodel_tgt}.model \
+                local/score_bleu_st.sh --case ${tgt_case} \
+                                    --bpe ${nbpe} --bpemodel ${bpemodel_tgt}.model \
+                                    --remove-non-verbal ${remove_non_verbal_eval} \
                     ${expdir}/${decode_dir} ${lg_tgt} ${dict_tgt} ${dict_src}
             else
                 echo "BLEU has been computed."

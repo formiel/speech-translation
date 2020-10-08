@@ -322,11 +322,11 @@ class MtCustomConverter(object):
         """
         # batch should be located in list
         assert len(batch) == 1
-        ys, ys_asr = batch[0]
+        ys_asr, ys = batch[0]
 
         # get batch of lengths of input sequences
         ilens = np.array([y[1].shape[0] if isinstance(y, tuple) else y.shape[0]
-                        for y in ys])
+                        for y in ys_asr])
         ilens = torch.from_numpy(ilens).to(device)
 
         # perform padding and convert to tensor
@@ -338,7 +338,7 @@ class MtCustomConverter(object):
         ys_pad_asr = pad_list([
             torch.from_numpy(
                 np.insert(y[1], 0, y[0]) if isinstance(y, tuple) else y).long()
-            for y in ys_asr], self.ignore_id).to(device)
+            for y in ys_asr], self.pad).to(device)
 
         return None, ilens, ys_pad, ys_pad_asr
 
@@ -357,7 +357,7 @@ def train(args):
         logging.warning('cuda is not available')
 
     # language pairs
-    lang_pairs = args.lang_pairs if not args.train_adapters else \
+    lang_pairs = args.lang_pairs if (not args.train_adapters and not args.use_multi_dict) else \
                             "en-de,en-es,en-fr,en-it,en-nl,en-pt,en-ro,en-ru"
     lang_pairs = sorted(lang_pairs.split(','))
     args.one_to_many = True if len(lang_pairs) > 1 else False
@@ -368,7 +368,7 @@ def train(args):
     args.src_lang = src_lang
     
     # get paths to data
-    if args.one_to_many:
+    if args.one_to_many and not args.use_multi_dict:
         train_jpaths = [os.path.join(args.train_json, fname) for fname in 
                 sorted(os.listdir(args.train_json)) if fname.endswith('.json')]
         valid_jpaths = [os.path.join(args.valid_json, fname) for fname in 
@@ -426,12 +426,13 @@ def train(args):
     # adapters
     if args.train_adapters:
         args.use_adapters = True
-    if args.use_adapters:
+    if args.use_adapters or args.use_multi_dict:
         lang_pairs = sorted(args.lang_pairs.split(',')) # reset lang_pairs
         tgt_langs = sorted([p.split('-')[-1] for p in lang_pairs])
         all_langs = list(sorted(set([l for p in lang_pairs for l in p.split('-')])))
-        args.adapters = [l for l in all_langs] if args.use_adapters_for_asr \
-                        else [l for l in tgt_langs]
+        if args.use_adapters:
+            args.adapters = [l for l in all_langs] if args.use_adapters_for_asr \
+                                                    else [l for l in tgt_langs]
     else:
         args.adapters = None
     logging.info(f'| lang_pairs: {lang_pairs}')
@@ -558,7 +559,7 @@ def train(args):
     train_all_pairs = [None] * num_langs
     valid_all_pairs = [None] * num_langs
     batch_size = args.batch_size//num_langs if (num_langs > 1 and 
-                                                args.do_st and
+                                                (args.do_st or args.do_mt) and
                                                 not args.use_adapters) \
                                             else args.batch_size
     min_batch_size = args.ngpu if (args.ngpu > 1 and args.do_mt) else 1
@@ -640,9 +641,10 @@ def train(args):
     #     logging.info(f'batch {i}/{n}')
     #     m = len(batch)
     #     n_tokens = 0
-    #     for j, sample in enumerate(batch):
-    #         if j == 0:
+    #     if i == 0:
+    #         for j, sample in enumerate(batch):
     #             logging.info(f'sample: {sample}')
+    #         break
     #         logging.info(f'sample {j}/{m}: {sample[1]["lang"]}, \
     #                     {sample[1]["input"][0]["shape"][0]}, \
     #                     {sample[1]["input"][1]["shape"][0]}')

@@ -288,7 +288,8 @@ class E2E(STInterface, torch.nn.Module):
                 cross_shared=self.cross_shared,
                 cross_weight_learnable=self.cross_weight_learnable,
                 cross_weight=self.cross_weight,
-                use_output_layer=True if self.use_joint_dict else False,
+                use_output_layer=True if (self.use_joint_dict or \
+                                    (self.do_st and not self.do_asr)) else False,
                 adapter_names=adapter_names,
                 reduction_factor=adapter_reduction_factor,
             )
@@ -309,7 +310,8 @@ class E2E(STInterface, torch.nn.Module):
                 cross_shared=self.cross_shared,
                 cross_weight_learnable=self.cross_weight_learnable,
                 cross_weight=self.cross_weight,
-                use_output_layer=True if self.use_joint_dict else False,
+                use_output_layer=True if (self.use_joint_dict or \
+                                    (self.do_asr and not self.do_st)) else False,
                 adapter_names=adapter_names,
                 reduction_factor=adapter_reduction_factor,
             )
@@ -317,11 +319,14 @@ class E2E(STInterface, torch.nn.Module):
                 logging.info('*** Use shared decoders *** ')
                 self.decoder_asr = self.decoder
 
-        if not self.use_joint_dict:
-            if self.do_st or self.do_mt:
-                self.output_layer = torch.nn.Linear(args.adim, odim_tgt)
-            if self.do_asr:
-                self.output_layer_asr = torch.nn.Linear(args.adim, odim_src)
+        if not self.use_joint_dict and (self.do_st and self.do_asr):
+            self.output_layer = torch.nn.Linear(args.adim, odim_tgt)
+            self.output_layer_asr = torch.nn.Linear(args.adim, odim_src)
+        # if not self.use_joint_dict:
+        #     if self.do_st:
+        #         self.output_layer = torch.nn.Linear(args.adim, odim_tgt)
+        #     if self.do_asr:
+        #         self.output_layer_asr = torch.nn.Linear(args.adim, odim_src)
 
         # submodule for MT task
         if self.do_mt:
@@ -351,7 +356,7 @@ class E2E(STInterface, torch.nn.Module):
                     self_attention_dropout_rate=args.transformer_attn_dropout_rate,
                     src_attention_dropout_rate=args.transformer_attn_dropout_rate,
                     normalize_before=self.normalize_before,
-                    use_output_layer=True if self.use_joint_dict else False,
+                    use_output_layer=True,
                     adapter_names=adapter_names,
                     reduction_factor=adapter_reduction_factor,
                 )
@@ -368,7 +373,7 @@ class E2E(STInterface, torch.nn.Module):
             self.error_calculator = ErrorCalculator(args.char_list_src,
                                                     args.sym_space, args.sym_blank,
                                                     args.report_cer, args.report_wer)
-        elif args.report_bleu:
+        elif self.do_mt and getattr(args, "report_bleu", False):
             from espnet.nets.e2e_mt_common import ErrorCalculator
             self.error_calculator = ErrorCalculator(args.char_list_tgt,
                                                     args.sym_space,
@@ -454,7 +459,7 @@ class E2E(STInterface, torch.nn.Module):
             ys_mask_src = target_mask(ys_in_pad_src, self.ignore_id) # bs x max_lens_src x max_lens_src
 
         if self.do_mt and not self.do_st:
-            ys_pad_src_mt = ys_in_pad_src[:, :max(ilens)]  # for data parallel
+            ys_pad_src_mt = ys_pad_src[:, :max(ilens)]  # for data parallel
             ys_mask_src_mt = (~make_pad_mask(ilens.tolist())).to(ys_pad_src_mt.device).unsqueeze(-2)
 
         # 1. forward encoder
@@ -466,10 +471,8 @@ class E2E(STInterface, torch.nn.Module):
             src_mask = (~make_pad_mask(ilens.tolist())).to(xs_pad.device).unsqueeze(-2) # bs x 1 x max_ilens
             enc_lang_id = str(tgt_lang_ids[0].data.cpu().numpy()[0]) if self.use_adapters_in_enc else None
             hs_pad, hs_mask = self.encoder(xs_pad, src_mask, enc_lang_id)
-            # self.hs_pad = hs_pad # hs_pad: bs x (max_ilens/4) x adim; hs_mask: bs x 1 x (max_ilens/4)
         elif self.do_mt and not self.do_st:
             hs_pad_mt, hs_mask_mt = self.encoder_mt(ys_pad_src_mt, ys_mask_src_mt)
-            # self.hs_pad = hs_pad
         else:
             raise NotImplementedError
 
@@ -498,7 +501,7 @@ class E2E(STInterface, torch.nn.Module):
             else:
                 pred_pad, pred_mask = self.decoder(ys_in_pad, ys_mask, hs_pad, hs_mask)
 
-            if not self.use_joint_dict:
+            if not self.use_joint_dict and (self.do_st and self.do_asr):
                 pred_pad = self.output_layer(pred_pad)
 
             self.pred_pad = pred_pad
@@ -528,7 +531,7 @@ class E2E(STInterface, torch.nn.Module):
             else:
                 pred_pad_asr, _ = self.decoder_asr(ys_in_pad_src, ys_mask_src, hs_pad, hs_mask)
 
-            if not self.use_joint_dict:
+            if not self.use_joint_dict and (self.do_st and self.do_asr):
                 pred_pad_asr = self.output_layer_asr(pred_pad_asr)
 
             self.pred_pad_asr = pred_pad_asr
@@ -726,7 +729,7 @@ class E2E(STInterface, torch.nn.Module):
                     local_att_scores = traced_decoder(ys, ys_mask, enc_output)[0]
                 else:
                     local_att_scores = self.decoder_asr.forward_one_step(ys, ys_mask, enc_output)[0]
-                if not self.use_joint_dict:
+                if not self.use_joint_dict and (self.do_st and self.do_asr):
                     local_att_scores = self.output_layer_asr(local_att_scores)
 
                 if rnnlm:
@@ -917,7 +920,7 @@ class E2E(STInterface, torch.nn.Module):
                         local_att_scores = self.decoder_mt.forward_one_step(ys, ys_mask, enc_output)[0]
                     else:
                         local_att_scores = self.decoder.forward_one_step(ys, ys_mask, enc_output)[0]
-                if not self.use_joint_dict:
+                if not self.use_joint_dict and (self.do_st and self.do_asr):
                     local_att_scores = self.output_layer(local_att_scores)
 
                 if rnnlm:
@@ -1384,7 +1387,7 @@ class E2E(STInterface, torch.nn.Module):
                             local_att_scores_asr = self.decoder_asr.forward_one_step(ys_asr, ys_mask_asr, enc_output)[0]
 
                         # If using 2 separate dictionaries
-                        if not self.use_joint_dict:
+                        if not self.use_joint_dict and (self.do_st and self.do_asr):
                             local_att_scores_asr = self.output_layer_asr(local_att_scores_asr)
                         if score_is_prob:
                             local_att_scores_asr = torch.exp(local_att_scores_asr)
@@ -1405,7 +1408,7 @@ class E2E(STInterface, torch.nn.Module):
                             local_att_scores = self.decoder.forward_one_step(ys, ys_mask, enc_output)[0]
 
                         # If using 2 separate dictionaries
-                        if not self.use_joint_dict:
+                        if not self.use_joint_dict and (self.do_st and self.do_asr):
                             local_att_scores = self.output_layer(local_att_scores)
                         if score_is_prob:
                             local_att_scores = torch.exp(local_att_scores)

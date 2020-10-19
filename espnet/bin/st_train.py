@@ -230,9 +230,10 @@ def get_parser(parser=None, required=True):
                         help='Replace <sos> in the decoder with a target language ID \
                               (the first token in the target sequence)')
     # set tasks to train models: ST, or ASR, or MT, or joint ST and ASR
-    # (ST is set using --do-st, ASR is set via --asr-weight and --mtlalpha, 
-    # joint ASR and ST is set using --asr-weight and --do-st,
-    # MT is set via --mt-weight)
+    # 1. ST is set using --do-st, 
+    # 2. ASR is set via --asr-weight and --mtlalpha, 
+    # 3. Joint ASR and ST is set using --asr-weight and --do-st,
+    # 4. MT is set via --mt-weight
     parser.add_argument('--do-st', default=True, type=strtobool,
                         help='Do speech translation task.')
     # One-to-many models related

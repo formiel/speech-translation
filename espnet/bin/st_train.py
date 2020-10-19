@@ -257,11 +257,11 @@ def get_parser(parser=None, required=True):
     parser.add_argument('--train-adapters', default=False, type=strtobool,
                         help='Train adapters from scratch.')
     parser.add_argument('--use-multi-dict', default=False, type=strtobool,
-                        help='')
+                        help='Use joint multilingual dictionary in training.')
     parser.add_argument('--trainable-modules', default="adapter", type=str,
                         help='Modules to be updated in adapter-based finetuning.')
     parser.add_argument('--use-adapters-for-asr', default=False, type=strtobool,
-                        help='Use adapters for transcription text.')
+                        help='Use adapters for transcription.')
     parser.add_argument('--use-adapters-in-enc', default=False, type=strtobool,
                         help='Use adapters in encoder.')
     # Dual attention related

@@ -251,8 +251,8 @@ class E2E(STInterface, torch.nn.Module):
             assert not self.do_asr or \
                 (self.do_asr and self.num_decoders != 1) or \
                 (self.do_asr and not self.do_st) # for backward compatibility
-        if self.use_adapters_in_enc:
-            assert not use_adapters_for_asr #TODO: adapters in encoder for joint ASR+ST
+        # if self.use_adapters_in_enc:
+        #     assert not use_adapters_for_asr #TODO: adapters in encoder for joint ASR+ST
         if adapter_names:
             adapter_names = [str(args.char_list_tgt.index(f'<2{l}>')) for l in adapter_names]
         logging.info(f'| adapters = {adapter_names}')
@@ -476,8 +476,15 @@ class E2E(STInterface, torch.nn.Module):
                 lang_embed = self.language_embeddings(tgt_lang_ids) # bs x 1 x idim
                 xs_pad = xs_pad + lang_embed
             src_mask = (~make_pad_mask(ilens.tolist())).to(xs_pad.device).unsqueeze(-2) # bs x 1 x max_ilens
-            enc_lang_id = str(tgt_lang_ids[0].data.cpu().numpy()[0]) if self.use_adapters_in_enc else None
+            if self.use_adapters_in_enc:
+                enc_lang_id = str(tgt_lang_ids[0].data.cpu().numpy()[0])
+                enc_lang_id_src = str(tgt_lang_ids_src[0].data.cpu().numpy()[0]) if self.do_asr else None
+            else:
+                enc_lang_id = None
             hs_pad, hs_mask = self.encoder(xs_pad, src_mask, enc_lang_id)
+            hs_pad_src, hs_mask_src = hs_pad, hs_mask
+            if self.use_adapters_in_enc and self.do_asr:
+                hs_pad_src, hs_mask_src = self.encoder(xs_pad, src_mask, enc_lang_id_src)
         elif self.do_mt and not self.do_st:
             hs_pad_mt, hs_mask_mt = self.encoder_mt(ys_pad_src_mt, ys_mask_src_mt)
         else:
@@ -532,11 +539,11 @@ class E2E(STInterface, torch.nn.Module):
                     (self.cross_self_from == "before-self" and self.cross_self):
                     cross_input = self.decoder.decoders[0].norm1(cross_input)
 
-                pred_pad_asr, _ = self.decoder_asr(ys_in_pad_src, ys_mask_src, hs_pad, hs_mask,
+                pred_pad_asr, _ = self.decoder_asr(ys_in_pad_src, ys_mask_src, hs_pad_src, hs_mask_src,
                                         cross=cross_input, cross_mask=cross_mask,
                                         cross_self=self.cross_self, cross_src=self.cross_src)
             else:
-                pred_pad_asr, _ = self.decoder_asr(ys_in_pad_src, ys_mask_src, hs_pad, hs_mask)
+                pred_pad_asr, _ = self.decoder_asr(ys_in_pad_src, ys_mask_src, hs_pad_src, hs_mask_src)
 
             if not self.use_joint_dict and (self.do_st and self.do_asr):
                 pred_pad_asr = self.output_layer_asr(pred_pad_asr)

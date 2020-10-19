@@ -431,7 +431,8 @@ def train(args):
         tgt_langs = sorted([p.split('-')[-1] for p in lang_pairs])
         all_langs = list(sorted(set([l for p in lang_pairs for l in p.split('-')])))
         if args.use_adapters:
-            args.adapters = [l for l in all_langs] if args.use_adapters_for_asr \
+            args.adapters = [l for l in all_langs] if (args.use_adapters_for_asr or
+                                                        args.use_adapters_in_enc) \
                                                     else [l for l in tgt_langs]
     else:
         args.adapters = None

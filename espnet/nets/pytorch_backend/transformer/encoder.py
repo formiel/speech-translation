@@ -5,7 +5,7 @@
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
 """Encoder definition."""
-
+import logging
 import torch
 from torch import nn
 
@@ -150,6 +150,7 @@ class Encoder(torch.nn.Module):
         :return: position embedded tensor, mask and new cache
         :rtype Tuple[torch.Tensor, torch.Tensor, List[torch.Tensor]]:
         """
+        logging.info(f'ENCODER forward_one_step')
         if isinstance(self.embed, Conv2dSubsampling):
             xs, masks = self.embed(xs, masks)
         else:

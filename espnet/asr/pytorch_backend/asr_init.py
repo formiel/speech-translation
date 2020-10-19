@@ -36,7 +36,9 @@ def transfer_verification(model_state_dict, partial_state_dict, modules):
     return len(partial_modules) > 0
 
 
-def get_partial_state_dict(model_state_dict, modules, init_from_decoder_asr=False):
+def get_partial_state_dict(model_state_dict, modules, 
+                            init_from_decoder_asr=False,
+                            init_from_decoder_mt=False):
     """Create state_dict with specified modules matching input model modules.
 
     Note that get_partial_lm_state_dict is used if a LM specified.
@@ -54,6 +56,8 @@ def get_partial_state_dict(model_state_dict, modules, init_from_decoder_asr=Fals
     for key, value in model_state_dict.items():
         if init_from_decoder_asr:
             key = key.replace("_asr", "")
+        elif init_from_decoder_mt:
+            key = key.replace("decoder_mt", "decoder")
         if any(key.startswith(m) for m in modules):
             new_state_dict[key] = value
 
@@ -128,7 +132,9 @@ def get_partial_lm_state_dict(model_state_dict, modules):
     return new_state_dict, new_modules
 
 
-def filter_modules(model_state_dict, modules, init_from_decoder_asr=False):
+def filter_modules(model_state_dict, modules, 
+                    init_from_decoder_asr=False,
+                    init_from_decoder_mt=False):
     """Filter non-matched modules in module_state_dict.
 
     Args:
@@ -144,7 +150,8 @@ def filter_modules(model_state_dict, modules, init_from_decoder_asr=False):
 
     mods_model = list(model_state_dict.keys())
     mods_model = [k.replace("_asr", "") for k in mods_model] if init_from_decoder_asr \
-                                                            else mods_model
+                    else [k.replace("decoder_mt", "decoder") for k in mods_model] if init_from_decoder_mt \
+                    else mods_model
     for mod in modules:
         if any(key.startswith(mod) for key in mods_model):
             new_mods += [mod]
@@ -307,7 +314,12 @@ def get_trained_model_state_dict_multi(model_path):
 
         return torch.load(model_path), True
 
-    idim, odim_tgt, odim_src, args = get_model_conf_multi(model_path, conf_path)
+    try:
+        idim, odim_tgt, odim_src, args = get_model_conf_multi(model_path, conf_path)
+    except:
+        idim, odim_tgt, args = get_model_conf(model_path, conf_path)
+        setattr(args, "model_module", "espnet.nets.pytorch_backend.e2e_st_transformer:E2E")
+        odim_src = odim_tgt
 
     logging.warning('reading model parameters from ' + model_path)
 
@@ -447,7 +459,8 @@ def load_trained_modules_multi(idim, odim_tgt, odim_src, args, interface=ASRInte
                     modules = filter_modules_dual_decoders(model_state_dict, modules)
                 else:
                     modules = filter_modules(model_state_dict, modules, 
-                            init_from_decoder_asr=args.init_from_decoder_asr)
+                            init_from_decoder_asr=args.init_from_decoder_asr,
+                            init_from_decoder_mt=args.init_from_decoder_mt)
 
                 if is_lm:
                     partial_state_dict, modules = get_partial_lm_state_dict(model_state_dict, modules)
@@ -456,7 +469,8 @@ def load_trained_modules_multi(idim, odim_tgt, odim_src, args, interface=ASRInte
                         partial_state_dict, modules = get_partial_state_dict_dual_decoders(model_state_dict, modules)
                     else:
                         partial_state_dict = get_partial_state_dict(model_state_dict, modules,
-                            init_from_decoder_asr=args.init_from_decoder_asr)
+                            init_from_decoder_asr=args.init_from_decoder_asr,
+                            init_from_decoder_mt=args.init_from_decoder_mt)
 
                     if partial_state_dict:
                         if transfer_verification(main_state_dict, partial_state_dict, modules):

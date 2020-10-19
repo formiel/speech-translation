@@ -181,6 +181,7 @@ class Decoder(ScorerInterface, torch.nn.Module):
         :rtype: Tuple[torch.Tensor, List[torch.Tensor]]
         """
         x = self.embed(tgt)
+        lang_id = str(tgt[:, 0:1][0].item()) if self.adapter_names else None
         if cache is None:
             cache = self.init_state()
         new_cache = []
@@ -188,7 +189,8 @@ class Decoder(ScorerInterface, torch.nn.Module):
             x, tgt_mask, memory, memory_mask, _, _, _, _ = decoder(x, tgt_mask, 
                                                                         memory, None, 
                                                                         cross, cross_mask, 
-                                                                        cross_self, cross_src, 
+                                                                        cross_self, cross_src,
+                                                                        lang_id, 
                                                                         cache=c)
             new_cache.append(x)
 

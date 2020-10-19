@@ -45,6 +45,7 @@ use_lid=true         # if false then not use language id (for bilingual systems)
 asr_model=
 st_model=
 init_from_decoder_asr=
+init_from_decoder_mt=
 
 # training related
 preprocess_config=
@@ -673,6 +674,7 @@ if [[ ${stage} -le 4 ]] && [[ ${stop_stage} -ge 4 ]]; then
         --do-st ${do_st} \
         --report-bleu \
         --init-from-decoder-asr ${init_from_decoder_asr} \
+        --init-from-decoder-mt ${init_from_decoder_mt} \
         --use-adapters ${use_adapters} \
         --train-adapters ${train_adapters} \
         --use-multi-dict ${use_multi_dict} \
@@ -777,34 +779,33 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
 
         # Compute BLEU
         if [[ $tag != *"asr_model"* ]]; then
-            if [[ ! -s "${expdir}/${decode_dir}/result.tc.txt" ]]; then
-                echo "Compute BLEU..."
-                chmod +x local/score_bleu_st.sh
-                local/score_bleu_st.sh --case ${tgt_case} \
-                                    --bpe ${nbpe} --bpemodel ${bpemodel_tgt}.model \
-                                    --remove-non-verbal ${remove_non_verbal_eval} \
-                    ${expdir}/${decode_dir} ${lg_tgt} ${dict_tgt} ${dict_src}
-            else
-                echo "BLEU has been computed."
-                cat ${expdir}/${decode_dir}/result.tc.txt
-            fi
+            # if [[ ! -s "${expdir}/${decode_dir}/result.tc.txt" ]]; then
+            echo "Compute BLEU..."
+            chmod +x local/score_bleu_st.sh
+            local/score_bleu_st.sh --case ${tgt_case} \
+                                --bpe ${nbpe} --bpemodel ${bpemodel_tgt}.model \
+                ${expdir}/${decode_dir} ${lg_tgt} ${dict_tgt} ${dict_src} ${remove_non_verbal_eval}
+            # else
+            #     echo "BLEU has been computed."
+            #     cat ${expdir}/${decode_dir}/result.tc.txt
+            # fi
         fi
 
-        # Compute WER
-        if [[ $tag != *"mt_model"* ]]; then
-            if [[ ! -s "${expdir}/${decode_dir}/result.wrd.wer.txt" ]]; then
-                echo "Compute WER score..."
-                idx=1
-                if [[ $tag == *"asr_model"* ]]; then
-                    idx=0
-                fi
-                local/score_sclite_st.sh --case ${src_case} --bpe ${nbpe_src} --bpemodel ${bpemodel_src}.model --wer true \
-                    ${expdir}/${decode_dir} ${dict_src} ${idx}
-            else
-                echo "WER has been computed."
-                cat ${expdir}/${decode_dir}/result.wrd.wer.txt
-            fi
-        fi
+        # # Compute WER
+        # if [[ $tag != *"mt_model"* ]]; then
+        #     if [[ ! -s "${expdir}/${decode_dir}/result.wrd.wer.txt" ]]; then
+        #         echo "Compute WER score..."
+        #         idx=1
+        #         if [[ $tag == *"asr_model"* ]]; then
+        #             idx=0
+        #         fi
+        #         local/score_sclite_st.sh --case ${src_case} --bpe ${nbpe_src} --bpemodel ${bpemodel_src}.model --wer true \
+        #             ${expdir}/${decode_dir} ${dict_src} ${idx}
+        #     else
+        #         echo "WER has been computed."
+        #         cat ${expdir}/${decode_dir}/result.wrd.wer.txt
+        #     fi
+        # fi
     ) &
     pids+=($!) # store background pids
     done

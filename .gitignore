@@ -9,10 +9,11 @@
 *submit*
 *_org.py
 
-egs/must_c/st_multilingual/conf/tuning/*
-egs/must_c/st_multilingual/conf/decoding_after/*
-egs/must_c/st_multilingual/conf/training_after/*
-egs/must_c/st_multilingual/conf/transfer_learning/*
+egs/must_c/st_multilingual/conf/tuning*
+egs/must_c/st_multilingual/conf/decoding_after*
+egs/must_c/st_multilingual/conf/training_after*
+egs/must_c/st_multilingual/conf/transfer_learning*
+egs/must_c/st_multilingual/conf/coling2020*
 
 egs/must_c/st_multilingual/create_report*
 egs/must_c/st_multilingual/create_data*
@@ -24,6 +25,8 @@ egs/must_c/st_multilingual/check*
 egs/must_c/st_multilingual/print_params.py
 egs/must_c/st_multilingual/correct_json.py
 egs/must_c/st_multilingual/cancel_jobs.sh
+egs/must_c/st_multilingual/modify_yaml.py
+egs/must_c/st_multilingual/compare*
 
 egs/must_c/st_multilingual/report.py
 egs/must_c/st_multilingual/*.slurm

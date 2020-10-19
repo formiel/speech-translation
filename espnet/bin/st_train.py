@@ -218,7 +218,9 @@ def get_parser(parser=None, required=True):
                         type=lambda s: [str(mod) for mod in s.split(',') if s != ''],
                         help='List of decoder modules to initialize, separated by a comma.')
     parser.add_argument('--init-from-decoder-asr', default=False, type=strtobool,
-                        help='Do translation task or not.')
+                        help='Initialization from ASR decoder')
+    parser.add_argument('--init-from-decoder-mt', default=False, type=strtobool,
+                        help='Initialization from MT decoder')
     # multilingual related
     parser.add_argument('--multilingual', default=False, type=strtobool,
                         help='Prepend target language ID to the source sentence. \
@@ -240,6 +242,9 @@ def get_parser(parser=None, required=True):
     parser.add_argument('--lang-tok', choices=['encoder-pre-sum', 'decoder-pre'], 
                         default=None, type=str,
                         help='Language token added in the source')
+    parser.add_argument('--lang-tok-mt', choices=['pre-tgt', 'pre-src'], 
+                        default=None, type=str,
+                        help='Position to add language tokens in multilingual MT model.')
     parser.add_argument('--use-lid', default=False, type=strtobool,
                         help='Use both tgt and src language ID to \
                               replace <sos> token in the decoder')

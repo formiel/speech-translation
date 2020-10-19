@@ -659,14 +659,16 @@ def train(args):
             preprocess_args={'train': True},
             langs_dict_tgt=args.langs_dict_tgt,
             langs_dict_src=args.langs_dict_src,
-            src_lang=src_lang)
+            src_lang=src_lang,
+            lang_tok_mt=args.lang_tok_mt)
     load_cv = LoadInputsAndTargets(mode='mt' if args.do_mt else 'asr',
             load_input=not args.do_mt,
             preprocess_conf=args.preprocess_conf if not args.do_mt else None,
             preprocess_args={'train': False},
             langs_dict_tgt=args.langs_dict_tgt,
             langs_dict_src=args.langs_dict_src,
-            src_lang=src_lang)
+            src_lang=src_lang,
+            lang_tok_mt=args.lang_tok_mt)
 
     # features, targets = load_tr(train[0])
     # logging.info(f'features \n {features}')
@@ -879,9 +881,7 @@ def train(args):
     # Resume from a snapshot
     if args.resume:
         logging.info('resumed from %s' % args.resume)
-        # torch_resume(args.resume, trainer)
-        torch_resume(args.resume, trainer, 
-                reset_optimizer=args.use_adapters and not args.train_adapters)
+        torch_resume(args.resume, trainer)
 
     # Run the training
     trainer.run()

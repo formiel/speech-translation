@@ -42,8 +42,14 @@ def main():
     else:
         last = sorted(args.snapshots, key=os.path.getmtime)
         last = last[-args.num:]
-    print("average over", last)
     avg = None
+
+    existing_last = []
+    for path in last:
+        if os.path.exists(path):
+            existing_last.append(path)
+    last = existing_last
+    print(f"averaging over: {[s.split('/')[-1] for s in last]}")
 
     if args.backend == 'pytorch':
         import torch

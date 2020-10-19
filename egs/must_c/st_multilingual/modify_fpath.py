@@ -11,22 +11,23 @@ def modify_fpath(input_dir, new_path=''):
 
         for jfile in jfiles:
             jpath = os.path.join(dir_path, jfile)
-            with open(jpath, "r") as f:
-                data = json.load(f)["utts"]
-                print(f'Number of utterances: {len(data)}')
-                for k, v in data.items():
-                    data[k]['input'][0]['feat'] = os.path.join(new_dir_path, v["input"][0]["feat"].split("/")[-1])
+            if jpath.endswith('.json'):
+                with open(jpath, "r") as f:
+                    data = json.load(f)["utts"]
+                    print(f'Number of utterances: {len(data)}')
+                    for k, v in data.items():
+                        data[k]['input'][0]['feat'] = os.path.join(new_dir_path, v["input"][0]["feat"].split("/")[-1])
 
-            tmp_jpath = os.path.join(dir_path, 'tmp_' + jfile.split('.')[0] + '.json')
-            os.rename(jpath, tmp_jpath)
+                tmp_jpath = os.path.join(dir_path, 'tmp_' + jfile.split('.')[0] + '.json')
+                os.rename(jpath, tmp_jpath)
 
-            new_data = {"utts": data}
-            print(f'Saving json file with modified path to {jpath}')
-            with open(jpath, "w") as f:
-                json.dump(new_data, f)
+                new_data = {"utts": data}
+                print(f'Saving json file with modified path to {jpath}')
+                with open(jpath, "w") as f:
+                    json.dump(new_data, f)
             
-            # print(f'Removing {tmp_jpath}')
-            # os.remove(tmp_jpath)
+                print(f'Removing {tmp_jpath}')
+                os.remove(tmp_jpath)
 
 
 def main():

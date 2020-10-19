@@ -173,6 +173,7 @@ class E2E(STInterface, torch.nn.Module):
         if self.use_joint_dict:
             self.langs_dict = getattr(args, "langs_dict_tgt", None)
         self.lang_tok = getattr(args, "lang_tok", None)
+        self.lang_tok_mt = getattr(args, "lang_tok_mt", None)
 
         self.subsample = get_subsample(args, 
                                        mode='mt' if self.do_mt else 'st', 
@@ -264,7 +265,7 @@ class E2E(STInterface, torch.nn.Module):
                 attention_heads=args.aheads,
                 linear_units=args.eunits,
                 num_blocks=args.elayers,
-                input_layer=args.transformer_input_layer,
+                input_layer=getattr(args, "transformer_input_layer", "conv2d"),
                 dropout_rate=args.dropout_rate,
                 positional_dropout_rate=args.dropout_rate,
                 attention_dropout_rate=args.transformer_attn_dropout_rate,
@@ -361,7 +362,7 @@ class E2E(STInterface, torch.nn.Module):
                     reduction_factor=adapter_reduction_factor,
                 )
         self.reset_parameters(args)  # place after the submodule initialization
-        if args.mtlalpha > 0.0:
+        if self.mtlalpha > 0.0:
             self.ctc = CTC(odim_src, args.adim, args.dropout_rate, 
                             ctc_type=args.ctc_type, reduce=True,
                             zero_infinity=True)
@@ -444,9 +445,11 @@ class E2E(STInterface, torch.nn.Module):
                 ys_pad = ys_pad[:, 1:]
             ys_in_pad, ys_out_pad = add_sos_eos(ys_pad, self.sos_tgt, self.eos_tgt, 
                                                 self.ignore_id) # bs x max_lens            
-            if self.lang_tok == "decoder-pre": # replace <sos> with target language IDs
+            if self.lang_tok == "decoder-pre" and self.lang_tok_mt != "pre-src": 
                 ys_in_pad = torch.cat([tgt_lang_ids, ys_in_pad[:, 1:]], dim=1)
             ys_mask = target_mask(ys_in_pad, self.ignore_id) # bs x max_lens x max_lens
+            # logging.info(f'ys_in_pad= {ys_in_pad}')
+            # logging.info(f'ys_out_pad= {ys_out_pad}')
 
         if self.do_asr or self.do_mt:
             if self.use_lid:
@@ -454,13 +457,17 @@ class E2E(STInterface, torch.nn.Module):
                 ys_pad_src = ys_pad_src[:, 1:]
             ys_in_pad_src, ys_out_pad_src = add_sos_eos(ys_pad_src, self.sos_src, self.eos_src, 
                                                         self.ignore_id) # bs x max_lens_src  
-            if self.lang_tok == "decoder-pre":
+            if self.lang_tok == "decoder-pre" and self.lang_tok_mt != "pre-tgt": # _v2 for mt_model_tgt
                 ys_in_pad_src = torch.cat([tgt_lang_ids_src, ys_in_pad_src[:, 1:]], dim=1) 
             ys_mask_src = target_mask(ys_in_pad_src, self.ignore_id) # bs x max_lens_src x max_lens_src
+            # logging.info(f'ys_in_pad_src= {ys_in_pad_src}')
+            # logging.info(f'ys_out_pad_src= {ys_out_pad_src}')
 
         if self.do_mt and not self.do_st:
-            ys_pad_src_mt = ys_pad_src[:, :max(ilens)]  # for data parallel
+            ys_pad_src_mt = ys_in_pad_src[:, :max(ilens)]  # for data parallel
             ys_mask_src_mt = (~make_pad_mask(ilens.tolist())).to(ys_pad_src_mt.device).unsqueeze(-2)
+            # logging.info(f'ys_pad_src_mt= {ys_pad_src_mt}')
+            # return
 
         # 1. forward encoder
         if self.do_st or self.do_asr:
@@ -852,16 +859,20 @@ class E2E(STInterface, torch.nn.Module):
             y = self.sos_tgt
 
         if self.use_lid and self.lang_tok == 'decoder-pre':
-            tgt_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[-1])
-            y = char_list.index(tgt_lang_id)
-            logging.info(f'tgt_lang_id: {tgt_lang_id} - y: {y}')
-
-            src_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[0])
-            src_lang_id = char_list.index(src_lang_id)
-            logging.info(f'src_lang_id: {src_lang_id}')
+            if self.lang_tok_mt is None or self.lang_tok_mt == "pre-tgt":
+                tgt_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[-1])
+                src_lang_id = self.sos_src # _v2
+                y = char_list.index(tgt_lang_id)
+            elif self.lang_tok_mt == "pre-src":
+                tgt_lang_id = self.sos_tgt
+                src_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[-1])
 
             if self.do_mt:
+                src_lang_id = char_list.index(src_lang_id)
                 x[0].insert(0, src_lang_id)
+            
+            logging.info(f'tgt_lang_id: {tgt_lang_id} - y: {y}')
+            logging.info(f'src_lang_id: {src_lang_id}')
 
         logging.info('<sos> index: ' + str(y))
         logging.info('<sos> mark: ' + char_list[y])

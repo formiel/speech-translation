@@ -49,6 +49,7 @@ class LoadInputsAndTargets(object):
                  langs_dict_tgt=None,
                  langs_dict_src=None,
                  src_lang='en',
+                 lang_tok_mt=None,
                  ):
         self._loaders = {}
         if mode not in ['asr', 'tts', 'mt']:
@@ -88,6 +89,7 @@ class LoadInputsAndTargets(object):
         self.langs_dict_tgt = langs_dict_tgt
         self.langs_dict_src = langs_dict_src
         self.src_lang = src_lang
+        self.lang_tok_mt = lang_tok_mt
 
     def __call__(self, batch):
         """Function to load inputs and targets from list of dicts
@@ -136,7 +138,10 @@ class LoadInputsAndTargets(object):
                     x = np.fromiter(map(int, info['output'][1]['tokenid'].split()),
                                     dtype=np.int64)
                     if self.langs_dict_tgt is not None and self.langs_dict_src is not None:
-                        x = (self.langs_dict_src[f'<2{self.src_lang}>'], x)
+                        if self.lang_tok_mt == 'pre-tgt':
+                            x = (self.langs_dict_src[f'<2{self.src_lang}>'], x)
+                        elif self.lang_tok_mt == "pre-src":
+                            x = (self.langs_dict_tgt['<2'+info['lang']+'>'], x)
                     x_feats_dict.setdefault(info['output'][1]['name'], []).append(x)
 
                 for idx, inp in enumerate(info['output']):

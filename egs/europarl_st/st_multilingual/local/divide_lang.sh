@@ -5,32 +5,36 @@
 
 . ./path.sh
 
-if [ "$#" -ne 2 ]; then
-    echo "Usage: $0 <set> <lang>>"
+if [ "$#" -ne 3 ]; then
+    echo "Usage: $0 <set> <src-lang> <tgt-lang>"
     echo "e.g.: $0 dev"
     exit 1
 fi
 
 set=$1
-lang=$2
+src_lang=$2
+lang=$3
+echo "| set: ${set}"
+echo "| src_lang: ${src_lang}"
+echo "| lang: ${lang}"
 
 # Copy stuff intoc its final locations [this has been moved from the format_data script]
-# for En
-mkdir -p data/${set}.en
+# for source language
+mkdir -p data/${set}.${src_lang}
 for f in spk2utt utt2spk segments wav.scp feats.scp utt2num_frames; do
     if [ -f data/${set}/${f} ]; then
-        sort data/${set}/${f} > data/${set}.en/${f}
+        sort data/${set}/${f} > data/${set}.${src_lang}/${f}
     fi
 done
-sort data/${set}/text.lc.rm.en > data/${set}.en/text  # dummy
-sort data/${set}/text.tc.en > data/${set}.en/text.tc
-sort data/${set}/text.lc.en > data/${set}.en/text.lc
-sort data/${set}/text.lc.rm.en > data/${set}.en/text.lc.rm
-utils/fix_data_dir.sh --utt_extra_files "text.tc text.lc text.lc.rm" data/${set}.en
-if [ -f data/${set}.en/feats.scp ]; then
-    utils/validate_data_dir.sh data/${set}.en || exit 1;
+sort data/${set}/text.lc.rm.${src_lang} > data/${set}.${src_lang}/text  # dummy
+sort data/${set}/text.tc.${src_lang} > data/${set}.${src_lang}/text.tc
+sort data/${set}/text.lc.${src_lang} > data/${set}.${src_lang}/text.lc
+sort data/${set}/text.lc.rm.${src_lang} > data/${set}.${src_lang}/text.lc.rm
+utils/fix_data_dir.sh --utt_extra_files "text.tc text.lc text.lc.rm" data/${set}.${src_lang}
+if [ -f data/${set}.${src_lang}/feats.scp ]; then
+    utils/validate_data_dir.sh data/${set}.${src_lang} || exit 1;
 else
-    utils/validate_data_dir.sh --no-feats --no-wav data/${set}.en || exit 1;
+    utils/validate_data_dir.sh --no-feats --no-wav data/${set}.${src_lang} || exit 1;
 fi
 
 # for target language

@@ -28,7 +28,6 @@ N=0                 # number of minibatches to be used (mainly for debugging).
 verbose=1           # verbose option
 resume=             # Resume the training from snapshot
 seed=1              # seed to generate random number
-mode=debug
 do_delta=false      # feature configuration
 
 # Path to raw MuST-C data
@@ -779,33 +778,27 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
 
         # Compute BLEU
         if [[ $tag != *"asr_model"* ]]; then
-            # if [[ ! -s "${expdir}/${decode_dir}/result.tc.txt" ]]; then
             echo "Compute BLEU..."
             chmod +x local/score_bleu_st.sh
             local/score_bleu_st.sh --case ${tgt_case} \
-                                --bpe ${nbpe} --bpemodel ${bpemodel_tgt}.model \
-                ${expdir}/${decode_dir} ${lg_tgt} ${dict_tgt} ${dict_src} ${remove_non_verbal_eval}
-            # else
-            #     echo "BLEU has been computed."
-            #     cat ${expdir}/${decode_dir}/result.tc.txt
-            # fi
+                                   --bpe ${nbpe} --bpemodel ${bpemodel_tgt}.model \
+                                   ${expdir}/${decode_dir} ${lg_tgt} ${dict_tgt} ${dict_src} \
+                                   ${remove_non_verbal_eval}
+            cat ${expdir}/${decode_dir}/result.tc.txt
         fi
 
-        # # Compute WER
-        # if [[ $tag != *"mt_model"* ]]; then
-        #     if [[ ! -s "${expdir}/${decode_dir}/result.wrd.wer.txt" ]]; then
-        #         echo "Compute WER score..."
-        #         idx=1
-        #         if [[ $tag == *"asr_model"* ]]; then
-        #             idx=0
-        #         fi
-        #         local/score_sclite_st.sh --case ${src_case} --bpe ${nbpe_src} --bpemodel ${bpemodel_src}.model --wer true \
-        #             ${expdir}/${decode_dir} ${dict_src} ${idx}
-        #     else
-        #         echo "WER has been computed."
-        #         cat ${expdir}/${decode_dir}/result.wrd.wer.txt
-        #     fi
-        # fi
+        # Compute WER
+        if [[ $tag != *"mt_model"* ]]; then
+            echo "Compute WER score..."
+            idx=1
+            if [[ $tag == *"asr_model"* ]]; then
+                idx=0
+            fi
+            local/score_sclite_st.sh --case ${src_case} --wer true \
+                                     --bpe ${nbpe_src} --bpemodel ${bpemodel_src}.model \
+                                     ${expdir}/${decode_dir} ${dict_src} ${idx}
+            cat ${expdir}/${decode_dir}/result.wrd.wer.txt
+        fi
     ) &
     pids+=($!) # store background pids
     done

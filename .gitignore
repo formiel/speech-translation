@@ -15,10 +15,12 @@ egs/must_c/st_multilingual/conf/training_after*
 egs/must_c/st_multilingual/conf/transfer_learning*
 egs/must_c/st_multilingual/conf/coling2020*
 
-egs/must_c/st_multilingual/create_report*
-egs/must_c/st_multilingual/create_data*
-egs/must_c/st_multilingual/create_histogram.py
-egs/must_c/st_multilingual/create_symlinks_tb.py
+egs/europarl_st/st_multilingual/conf/training*
+egs/europarl_st/st_multilingual/conf/decoding*
+*create_report*
+*create_data*
+*create_histogram*
+*create_symlinks*
 
 egs/must_c/st_multilingual/test.*
 egs/must_c/st_multilingual/check*
@@ -32,3 +34,8 @@ egs/must_c/st_multilingual/report.py
 egs/must_c/st_multilingual/*.slurm
 egs/must_c/st_multilingual/utils.sh
 egs/must_c/st_multilingual/wt_*
+egs/europarl_st/st_multilingual/m4atowav.py
+egs/europarl_st/st_multilingual/utils.sh
+egs/europarl_st/st_multilingual/conf/decoding/separate_decode.en-de.yaml
+egs/must_c/st_multilingual/create_hightlight.py
+egs/must_c/st_multilingual/toto.sh

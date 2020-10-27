@@ -358,7 +358,7 @@ def train(args):
 
     # language pairs
     lang_pairs = args.lang_pairs if (not args.train_adapters and not args.use_multi_dict) else \
-                            "en-de,en-es,en-fr,en-it,en-nl,en-pt,en-ro,en-ru"
+                            "en-de,en-es,en-fr,en-it,en-nl,en-pt,en-ro,en-ru" # TODO: fix for europarl
     lang_pairs = sorted(lang_pairs.split(','))
     args.one_to_many = True if len(lang_pairs) > 1 else False
     if args.one_to_many:

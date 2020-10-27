@@ -472,7 +472,15 @@ def get_model_conf_multi(model_path, conf_path=None):
         return argparse.Namespace(**args)
     else:
         # for asr, tts, mt
-        idim, odim_tgt, odim_src, args = confs
+        try:
+            idim, odim_tgt, odim_src, args = confs
+        except:
+            idim, odim, args = confs # for backward compatability
+            odim_tgt = odim
+            odim_src = odim
+            args["char_list_tgt"] = args["char_list"]
+            args["char_list_src"] = args["char_list"]
+
         return idim, odim_tgt, odim_src, argparse.Namespace(**args)
 
 

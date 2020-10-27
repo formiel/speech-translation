@@ -868,6 +868,7 @@ class E2E(STInterface, torch.nn.Module):
         if self.use_lid and self.lang_tok == 'decoder-pre':
             if self.lang_tok_mt is None or self.lang_tok_mt == "pre-tgt":
                 tgt_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[-1])
+                # src_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[0])
                 src_lang_id = self.sos_src # _v2
                 y = char_list.index(tgt_lang_id)
             elif self.lang_tok_mt == "pre-src":
@@ -875,7 +876,8 @@ class E2E(STInterface, torch.nn.Module):
                 src_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[-1])
 
             if self.do_mt:
-                src_lang_id = char_list.index(src_lang_id)
+                if src_lang_id != self.sos_src:
+                    src_lang_id = char_list.index(src_lang_id)
                 x[0].insert(0, src_lang_id)
             
             logging.info(f'tgt_lang_id: {tgt_lang_id} - y: {y}')

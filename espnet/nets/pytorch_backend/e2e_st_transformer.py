@@ -251,8 +251,7 @@ class E2E(STInterface, torch.nn.Module):
             assert not self.do_asr or \
                 (self.do_asr and self.num_decoders != 1) or \
                 (self.do_asr and not self.do_st) # for backward compatibility
-        # if self.use_adapters_in_enc:
-        #     assert not use_adapters_for_asr #TODO: adapters in encoder for joint ASR+ST
+
         if adapter_names:
             adapter_names = [str(args.char_list_tgt.index(f'<2{l}>')) for l in adapter_names]
         logging.info(f'| adapters = {adapter_names}')

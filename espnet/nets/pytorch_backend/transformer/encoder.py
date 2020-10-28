@@ -108,6 +108,8 @@ class Encoder(torch.nn.Module):
             raise NotImplementedError("Support only linear or conv1d.")
 
         self.adapter_names = adapter_names
+        adapters = nn.ModuleDict({k: Adapter(attention_dim, int(attention_dim/reduction_factor))
+                                        for k in adapter_names}) if adapter_names else None
         self.encoders = repeat(
             num_blocks,
             lambda: EncoderLayer(
@@ -117,8 +119,7 @@ class Encoder(torch.nn.Module):
                 dropout_rate,
                 normalize_before,
                 concat_after,
-                adapters=nn.ModuleDict({k: Adapter(attention_dim, int(attention_dim/reduction_factor))
-                                        for k in adapter_names}) if adapter_names else None,
+                adapters=adapters,
             )
         )
         if self.normalize_before:

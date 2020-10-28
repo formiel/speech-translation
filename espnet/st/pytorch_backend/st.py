@@ -513,7 +513,7 @@ def train(args):
         logging.info('***** Trainable parameters *****')
         for n, p in model.named_parameters():
             if p.requires_grad:
-                logging.info(f'- {n}')
+                logging.info(f'- {n}: {p.is_leaf}')
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logging.info(f'Number of trainable parameters: {num_params}')
 

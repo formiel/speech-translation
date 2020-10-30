@@ -16,7 +16,7 @@ from espnet.nets.pytorch_backend.transformer.embedding import PositionalEncoding
 from espnet.nets.pytorch_backend.transformer.layer_norm import LayerNorm
 from espnet.nets.pytorch_backend.transformer.mask import subsequent_mask
 from espnet.nets.pytorch_backend.transformer.positionwise_feed_forward import PositionwiseFeedForward
-from espnet.nets.pytorch_backend.transformer.repeat import repeat
+from espnet.nets.pytorch_backend.transformer.repeat import repeat, _get_clones
 from espnet.nets.scorer_interface import ScorerInterface
 from espnet.nets.pytorch_backend.transformer.adapter import Adapter
 
@@ -104,11 +104,31 @@ class Decoder(ScorerInterface, torch.nn.Module):
                 raise NotImplementedError
         
         self.adapter_names = adapter_names
-        adapters = nn.ModuleDict({k: Adapter(attention_dim, int(attention_dim/reduction_factor))
-                                        for k in adapter_names}) if adapter_names else None
-        self.decoders = repeat(
-            num_blocks,
-            lambda: DecoderLayer(
+        # self.decoders = repeat(
+        #     num_blocks,
+        #     lambda: DecoderLayer(
+        #         attention_dim,
+        #         MultiHeadedAttention(
+        #             attention_heads, attention_dim, self_attention_dropout_rate),
+        #         MultiHeadedAttention(
+        #             attention_heads, attention_dim, src_attention_dropout_rate),
+        #         PositionwiseFeedForward(attention_dim, linear_units, dropout_rate),
+        #         dropout_rate,
+        #         normalize_before,
+        #         concat_after,
+        #         cross_self_attn=MultiHeadedAttention(
+        #             attention_heads, attention_dim, self_attention_dropout_rate) if cross_self_attn else None,
+        #         cross_src_attn=MultiHeadedAttention(
+        #             attention_heads, attention_dim, self_attention_dropout_rate) if cross_src_attn else None,
+        #         cross_operator=cross_operator,
+        #         cross_shared=cross_shared,
+        #         cross_weight_learnable=cross_weight_learnable,
+        #         cross_weight=cross_weight,
+        #         adapters=nn.ModuleDict({k: Adapter(attention_dim, int(attention_dim/reduction_factor))
+        #                                             for k in adapter_names}) if adapter_names else None,
+        #     )
+        # )
+        decoder_layer = DecoderLayer(
                 attention_dim,
                 MultiHeadedAttention(
                     attention_heads, attention_dim, self_attention_dropout_rate),
@@ -126,9 +146,10 @@ class Decoder(ScorerInterface, torch.nn.Module):
                 cross_shared=cross_shared,
                 cross_weight_learnable=cross_weight_learnable,
                 cross_weight=cross_weight,
-                adapters=adapters,
+                adapters=nn.ModuleDict({k: Adapter(attention_dim, int(attention_dim/reduction_factor))
+                                                    for k in adapter_names}) if adapter_names else None,
             )
-        )
+        self.decoders = _get_clones(decoder_layer, num_blocks)
 
         if self.normalize_before:
             self.after_norm = LayerNorm(attention_dim)
@@ -157,7 +178,13 @@ class Decoder(ScorerInterface, torch.nn.Module):
         """
         x = self.embed(tgt)
         lang_id = str(tgt[:, 0:1][0].item()) if self.adapter_names else None
-        x, tgt_mask, memory, memory_mask, _, _, _, _ = self.decoders(x, tgt_mask, 
+        # x, tgt_mask, memory, memory_mask, _, _, _, _ = self.decoders(x, tgt_mask, 
+        #                                                             memory, memory_mask, 
+        #                                                             cross, cross_mask, 
+        #                                                             cross_self, cross_src,
+        #                                                             lang_id)
+        for layer in self.decoders:
+            x, tgt_mask, memory, memory_mask, _, _, _, _ = layer(x, tgt_mask, 
                                                                     memory, memory_mask, 
                                                                     cross, cross_mask, 
                                                                     cross_self, cross_src,

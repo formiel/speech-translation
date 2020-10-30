@@ -5,9 +5,9 @@
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
 """Repeat the same layer definition."""
-
+import copy
 import torch
-
+from torch import nn
 
 class MultiSequential(torch.nn.Sequential):
     """Multi-input multi-output torch.nn.Sequential."""
@@ -18,7 +18,6 @@ class MultiSequential(torch.nn.Sequential):
             args = m(*args)
         return args
 
-
 def repeat(N, fn):
     """Repeat module N times.
 
@@ -28,3 +27,6 @@ def repeat(N, fn):
     :rtype: MultiSequential
     """
     return MultiSequential(*[fn() for _ in range(N)])
+
+def _get_clones(module, N):
+    return nn.ModuleList([copy.deepcopy(module) for i in range(N)])

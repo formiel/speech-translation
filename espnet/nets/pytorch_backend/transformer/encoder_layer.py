@@ -81,13 +81,16 @@ class EncoderLayer(nn.Module):
         residual = x
         if self.normalize_before:
             x = self.norm2(x)
-        x = residual + self.dropout(self.feed_forward(x))
-        if not self.normalize_before:
-            x = self.norm2(x)
+        # x = residual + self.dropout(self.feed_forward(x))
+        x = self.dropout(self.feed_forward(x))
 
         # Adapters
         if lang_id is not None and self.adapters is not None:
             x = self.adapters[lang_id](x, x)[0]
+        x = residual + x
+
+        if not self.normalize_before:
+            x = self.norm2(x)
 
         if cache is not None:
             x = torch.cat([cache, x], dim=1)

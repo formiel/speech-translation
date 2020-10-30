@@ -18,7 +18,7 @@ from espnet.nets.pytorch_backend.transformer.layer_norm import LayerNorm
 from espnet.nets.pytorch_backend.transformer.multi_layer_conv import Conv1dLinear
 from espnet.nets.pytorch_backend.transformer.multi_layer_conv import MultiLayeredConv1d
 from espnet.nets.pytorch_backend.transformer.positionwise_feed_forward import PositionwiseFeedForward
-from espnet.nets.pytorch_backend.transformer.repeat import repeat
+from espnet.nets.pytorch_backend.transformer.repeat import repeat, _get_clones
 from espnet.nets.pytorch_backend.transformer.subsampling import Conv2dSubsampling
 from espnet.nets.pytorch_backend.transformer.adapter import Adapter
 
@@ -108,20 +108,31 @@ class Encoder(torch.nn.Module):
             raise NotImplementedError("Support only linear or conv1d.")
 
         self.adapter_names = adapter_names
-        adapters = nn.ModuleDict({k: Adapter(attention_dim, int(attention_dim/reduction_factor))
-                                        for k in adapter_names}) if adapter_names else None
-        self.encoders = repeat(
-            num_blocks,
-            lambda: EncoderLayer(
+        # self.encoders = repeat(
+        #     num_blocks,
+        #     lambda: EncoderLayer(
+        #         attention_dim,
+        #         MultiHeadedAttention(attention_heads, attention_dim, attention_dropout_rate),
+        #         positionwise_layer(*positionwise_layer_args),
+        #         dropout_rate,
+        #         normalize_before,
+        #         concat_after,
+        #         adapters=nn.ModuleDict({k: Adapter(attention_dim, int(attention_dim/reduction_factor))
+        #                                 for k in adapter_names}) if adapter_names else None,
+        #     )
+        # )
+        encoder_layer = EncoderLayer(
                 attention_dim,
                 MultiHeadedAttention(attention_heads, attention_dim, attention_dropout_rate),
                 positionwise_layer(*positionwise_layer_args),
                 dropout_rate,
                 normalize_before,
                 concat_after,
-                adapters=adapters,
+                adapters=nn.ModuleDict({k: Adapter(attention_dim, int(attention_dim/reduction_factor))
+                                        for k in adapter_names}) if adapter_names else None,
             )
-        )
+        self.encoders = _get_clones(encoder_layer, num_blocks)
+
         if self.normalize_before:
             self.after_norm = LayerNorm(attention_dim)
 
@@ -137,31 +148,32 @@ class Encoder(torch.nn.Module):
             xs, masks = self.embed(xs, masks)
         else:
             xs = self.embed(xs)
-        xs, masks = self.encoders(xs, masks, lang_id)
+        # xs, masks = self.encoders(xs, masks, lang_id)
+        for layer in self.encoders:
+            xs, masks = layer(xs, masks, lang_id)
         if self.normalize_before:
             xs = self.after_norm(xs)
         return xs, masks
 
-    def forward_one_step(self, xs, masks, cache=None):
-        """Encode input frame.
+    # def forward_one_step(self, xs, masks, lang_id=None, cache=None):
+    #     """Encode input frame.
 
-        :param torch.Tensor xs: input tensor
-        :param torch.Tensor masks: input mask
-        :param List[torch.Tensor] cache: cache tensors
-        :return: position embedded tensor, mask and new cache
-        :rtype Tuple[torch.Tensor, torch.Tensor, List[torch.Tensor]]:
-        """
-        logging.info(f'ENCODER forward_one_step')
-        if isinstance(self.embed, Conv2dSubsampling):
-            xs, masks = self.embed(xs, masks)
-        else:
-            xs = self.embed(xs)
-        if cache is None:
-            cache = [None for _ in range(len(self.encoders))]
-        new_cache = []
-        for c, e in zip(cache, self.encoders):
-            xs, masks = e(xs, masks, cache=c)
-            new_cache.append(xs)
-        if self.normalize_before:
-            xs = self.after_norm(xs)
-        return xs, masks, new_cache
+    #     :param torch.Tensor xs: input tensor
+    #     :param torch.Tensor masks: input mask
+    #     :param List[torch.Tensor] cache: cache tensors
+    #     :return: position embedded tensor, mask and new cache
+    #     :rtype Tuple[torch.Tensor, torch.Tensor, List[torch.Tensor]]:
+    #     """
+    #     if isinstance(self.embed, Conv2dSubsampling):
+    #         xs, masks = self.embed(xs, masks)
+    #     else:
+    #         xs = self.embed(xs)
+    #     if cache is None:
+    #         cache = [None for _ in range(len(self.encoders))]
+    #     new_cache = []
+    #     for c, e in zip(cache, self.encoders):
+    #         xs, masks = e(xs, masks, lang_id=lang_id, cache=c)
+    #         new_cache.append(xs)
+    #     if self.normalize_before:
+    #         xs = self.after_norm(xs)
+    #     return xs, masks, new_cache

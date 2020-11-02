@@ -49,7 +49,8 @@ def main():
         if os.path.exists(path):
             existing_last.append(path)
     last = existing_last
-    print(f"averaging over: {[s.split('/')[-1] for s in last]}")
+    args.num = len(last)
+    print(f"averaging over {args.num} checkpoints: {[s.split('/')[-1] for s in last]}")
 
     if args.backend == 'pytorch':
         import torch

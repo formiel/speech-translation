@@ -178,10 +178,16 @@ set -o pipefail
 train_set=train_sp.${src_lang}-${tgt_langs}
 train_dev=dev.${src_lang}-${tgt_langs}
 
+num_trans_set=0
 if [[ -z ${trans_set} ]]; then
     trans_set=""
     for lang in $(echo ${tgt_langs} | tr '_' ' '); do
         trans_set="${trans_set} test.${src_lang}-${lang}"
+        num_trans_set=$(( num_trans_set + 1 ))
+    done
+else
+    for set in ${trans_set}; do
+        num_trans_set=$(( num_trans_set + 1 ))
     done
 fi
 
@@ -436,13 +442,13 @@ echo "| tensorboard_dir: ${tensorboard_dir}"
 # Data folders
 datadir_tmp=${datadir}
 datadir=${datadir_tmp}/${tgt_langs}/use_${dprefix}/src${nbpe_src}_tgt${nbpe}/${train_type}
-if [[ ${use_multi_dict} == "true" ]]; then
-    datadir=${datadir_tmp}/de_es_fr_it_nl_pt_ro_ru/use_${dprefix}/src${nbpe_src}_tgt${nbpe}
-elif (( $lang_count == 1 )) && [[ ${train_adapters} == "true" ]]; then
-    datadir=${datadir_tmp}/${tgt_langs}_train_adapters/use_${dprefix}/src${nbpe_src}_tgt${nbpe}
-elif (( $lang_count == 1 )) && [[ ${train_adapters} == "false" ]]; then
-    datadir=${datadir}/use_lid_${use_lid}
-fi
+# if [[ ${use_multi_dict} == "true" ]]; then
+#     datadir=${datadir_tmp}/de_es_fr_it_nl_pt_ro_ru/use_${dprefix}/src${nbpe_src}_tgt${nbpe}
+# elif (( $lang_count == 1 )) && [[ ${train_adapters} == "true" ]]; then
+#     datadir=${datadir_tmp}/${tgt_langs}_train_adapters/use_${dprefix}/src${nbpe_src}_tgt${nbpe}
+# elif (( $lang_count == 1 )) && [[ ${train_adapters} == "false" ]]; then
+#     datadir=${datadir}/use_lid_${use_lid}
+# fi
 
 if (( $lang_count == 1 )) && [[ ${train_adapters} == "false" ]]; then
     train_json_dir=${datadir}/train_sp/${src_lang}-${tgt_langs}.json
@@ -573,7 +579,7 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
 
     # Use all threads available
     nj=`grep -c ^processor /proc/cpuinfo`
-    # nj=$(( nj / num_trans_set ))
+    nj=$(( nj / num_trans_set ))
 
     if [[ $tag == *"debug"* ]]; then
         nj=1 # for debug
@@ -625,6 +631,7 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
         if [[ $tag != *"asr_model"* ]]; then
             echo "Compute BLEU..."
             chmod +x local/score_bleu_st.sh
+            echo "BPE model: ${bpemodel_tgt}"
             local/score_bleu_st.sh --case ${tgt_case} \
                                    --bpe ${nbpe} --bpemodel ${bpemodel_tgt}.model \
                                    ${expdir}/${decode_dir} ${lg_tgt} ${dict_tgt} ${dict_src} \

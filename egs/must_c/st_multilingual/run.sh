@@ -173,15 +173,14 @@ if [[ ${train_adapters} == "true" ]] || [[ ${use_multi_dict} == "true" ]]; then
     train_set_dict=train_sp.en-de_es_fr_it_nl_pt_ro_ru
 fi
 
+num_trans_set=0
 if [[ -z ${trans_set} ]]; then
     trans_set=""
-    num_trans_set=0
     for lang in $(echo ${tgt_langs} | tr '_' ' '); do
         trans_set+="tst-COMMON.en-${lang}.${lang} "
         num_trans_set=$(( num_trans_set + 1 ))
     done
 else
-    num_trans_set=0
     for set in $trans_set; do
         num_trans_set=$(( num_trans_set + 1 ))
     done

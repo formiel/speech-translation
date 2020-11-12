@@ -234,7 +234,7 @@ def load_trained_model(model_path):
     return model, train_args
 
 
-def load_trained_model_multi(model_path, load_adapters=True, adapters=None):
+def load_trained_model_multi(model_path, eval_no_adapters=False):
     """Load the trained model for recognition.
 
     Args:
@@ -250,7 +250,7 @@ def load_trained_model_multi(model_path, load_adapters=True, adapters=None):
     else:
         model_module = "espnet.nets.pytorch_backend.e2e_asr:E2E"
 
-    if not load_adapters:
+    if eval_no_adapters:
         train_args.use_adapters = False
         train_args.adapters = None
     model_class = dynamic_import(model_module)

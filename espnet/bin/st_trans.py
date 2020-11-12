@@ -124,6 +124,9 @@ def get_parser():
     # multilingual related
     parser.add_argument('--tgt-lang', default=False, type=str,
                         help='target language ID (e.g., <en>, <de>, and <fr> etc.)')
+    # adapter related
+    parser.add_argument('--eval-no-adapters', default=False, type=strtobool,
+                        help='Evaluate without adapters in the model.')
     return parser
 
 

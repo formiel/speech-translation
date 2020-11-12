@@ -74,6 +74,7 @@ trans_set=        # data set to decode
 max_iter_eval=    # get best model up to this iteration
 min_iter_eval=    # get best model from this iteration
 remove_non_verbal_eval=true  # if true, then remove non-verbal tokens in evaluation
+eval_no_adapters=
 
 # model average related (only for transformer)
 n_average=1                  # the number of ST models to be averaged,
@@ -728,6 +729,7 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
     # Use all threads available
     nj=`grep -c ^processor /proc/cpuinfo`
     nj=$(( nj / num_trans_set ))
+    nj=32 # for testing
 
     if [[ $tag == *"debug"* ]]; then
         nj=1 # for debug
@@ -772,7 +774,8 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
                 --trans-json ${feat_trans_dir}/split${nj}utt_${tgt_langs}/${lg_pair}.JOB.json \
                 --result-label ${expdir}/${decode_dir}/data.JOB.json \
                 --model ${expdir}/results/${trans_model} \
-                --verbose ${verbose}
+                --verbose ${verbose} \
+                --eval-no-adapters ${eval_no_adapters}
         fi
 
         # Compute BLEU

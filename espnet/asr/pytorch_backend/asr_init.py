@@ -234,12 +234,11 @@ def load_trained_model(model_path):
     return model, train_args
 
 
-def load_trained_model_multi(model_path):
+def load_trained_model_multi(model_path, load_adapters=True, adapters=None):
     """Load the trained model for recognition.
 
     Args:
         model_path (str): Path to model.***.best
-
     """
     idim, odim_tgt, odim_src, train_args = get_model_conf_multi(
         model_path, os.path.join(os.path.dirname(model_path), 'model.json'))
@@ -250,6 +249,10 @@ def load_trained_model_multi(model_path):
         model_module = train_args.model_module
     else:
         model_module = "espnet.nets.pytorch_backend.e2e_asr:E2E"
+
+    if not load_adapters:
+        train_args.use_adapters = False
+        train_args.adapters = None
     model_class = dynamic_import(model_module)
     model = model_class(idim, odim_tgt, odim_src, train_args)
 

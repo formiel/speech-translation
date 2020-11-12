@@ -221,6 +221,8 @@ def get_parser(parser=None, required=True):
                         help='Initialization from ASR decoder')
     parser.add_argument('--init-from-decoder-mt', default=False, type=strtobool,
                         help='Initialization from MT decoder')
+    parser.add_argument('--do-ft', default=False, type=strtobool,
+                        help='Do fine-tuning')
     # multilingual related
     parser.add_argument('--multilingual', default=False, type=strtobool,
                         help='Prepend target language ID to the source sentence. \

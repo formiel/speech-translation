@@ -366,6 +366,7 @@ def train(args):
     tgt_langs = sorted([p.split('-')[-1] for p in lang_pairs])
     src_lang = lang_pairs[0].split('-')[0]
     args.src_lang = src_lang
+    logging.info(f'args.src_lang = {src_lang}')
     
     # get paths to data
     if args.one_to_many and not args.use_multi_dict:
@@ -429,18 +430,26 @@ def train(args):
     if args.use_adapters or args.use_multi_dict:
         lang_pairs = sorted(args.lang_pairs.split(',')) # reset lang_pairs
         tgt_langs = sorted([p.split('-')[-1] for p in lang_pairs])
-        all_langs = list(sorted(set([l for p in lang_pairs for l in p.split('-')])))
+        all_langs = list(sorted(set([l for p in lang_pairs for l in p.split('-')]))) \
+                    if args.asr_weight > 0.0 else tgt_langs
         if args.use_adapters:
-            args.adapters = [l for l in all_langs] if (args.use_adapters_for_asr or
-                                                        args.use_adapters_in_enc) \
-                                                    else [l for l in tgt_langs]
+            args.adapters = [src_lang] if args.asr_weight > 0.0 and not args.do_st \
+                else [l for l in all_langs] if (args.use_adapters_for_asr or args.use_adapters_in_enc) \
+                else [l for l in tgt_langs]
+        else:
+            args.adapters = None
     else:
         args.adapters = None
     logging.info(f'| lang_pairs: {lang_pairs}')
-
+    logging.info(f'| args.adapters: {args.adapters}')
+    
     # Initialize with pre-trained ASR encoder and MT decoder
     if args.enc_init is not None or args.dec_init is not None:
         logging.info('Loading pretrained encoder and/or decoder ...')
+        if args.enc_init is not None:
+            assert os.path.isfile(args.enc_init)
+        if args.dec_init is not None:
+            assert os.path.isfile(args.dec_init)
         model = load_trained_modules_multi(idim, odim_tgt, odim_src, args, 
                                             interface=STInterface)
         logging.info(f'*** Model *** \n {model}')
@@ -502,7 +511,7 @@ def train(args):
         dtype = torch.float32
 
     # freeze all weights except for trainable modules in adapters
-    if args.use_adapters and not args.train_adapters:
+    if (args.use_adapters and not args.train_adapters) or args.do_ft:
         trainable_modules = args.trainable_modules.split(",")
         for p in model.parameters():
             p.requires_grad = False

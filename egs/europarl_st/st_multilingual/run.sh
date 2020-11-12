@@ -640,7 +640,7 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
         fi
 
         # Compute WER
-        if [[ $tag != *"mt_model"* ]]; then
+        if [[ $tag != *"mt_model"* ]] && [[ $tag != *"no_asr"* ]]; then
             echo "Compute WER score..."
             idx=1
             if [[ $tag == *"asr_model"* ]]; then

@@ -253,7 +253,10 @@ class E2E(STInterface, torch.nn.Module):
                 (self.do_asr and not self.do_st) # for backward compatibility
 
         if adapter_names:
-            adapter_names = [str(args.char_list_tgt.index(f'<2{l}>')) for l in adapter_names]
+            if self.do_asr and not self.do_st:
+                adapter_names = [str(args.char_list_src.index(f'<2{l}>')) for l in adapter_names]
+            else:
+                adapter_names = [str(args.char_list_tgt.index(f'<2{l}>')) for l in adapter_names]
         logging.info(f'| adapters = {adapter_names}')
 
         if self.do_st or self.do_asr:
@@ -476,7 +479,7 @@ class E2E(STInterface, torch.nn.Module):
                 xs_pad = xs_pad + lang_embed
             src_mask = (~make_pad_mask(ilens.tolist())).to(xs_pad.device).unsqueeze(-2) # bs x 1 x max_ilens
             if self.use_adapters_in_enc:
-                enc_lang_id = str(tgt_lang_ids[0].data.cpu().numpy()[0])
+                enc_lang_id = str(tgt_lang_ids[0].data.cpu().numpy()[0]) if self.do_st else None
                 enc_lang_id_src = str(tgt_lang_ids_src[0].data.cpu().numpy()[0]) if self.do_asr else None
             else:
                 enc_lang_id = None

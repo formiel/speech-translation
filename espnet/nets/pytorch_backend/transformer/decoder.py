@@ -177,12 +177,12 @@ class Decoder(ScorerInterface, torch.nn.Module):
         :rtype: torch.Tensor
         """
         x = self.embed(tgt)
-        lang_id = str(tgt[:, 0:1][0].item()) if self.adapter_names else None
-        # x, tgt_mask, memory, memory_mask, _, _, _, _ = self.decoders(x, tgt_mask, 
-        #                                                             memory, memory_mask, 
-        #                                                             cross, cross_mask, 
-        #                                                             cross_self, cross_src,
-        #                                                             lang_id)
+        lang_id = str(tgt[:, 0:1][0].item())
+        if not self.adapter_names:
+            lang_id = None
+        elif lang_id not in self.adapter_names:
+            lang_id = None
+
         for layer in self.decoders:
             x, tgt_mask, memory, memory_mask, _, _, _, _ = layer(x, tgt_mask, 
                                                                     memory, memory_mask, 
@@ -209,7 +209,12 @@ class Decoder(ScorerInterface, torch.nn.Module):
         :rtype: Tuple[torch.Tensor, List[torch.Tensor]]
         """
         x = self.embed(tgt)
-        lang_id = str(tgt[:, 0:1][0].item()) if self.adapter_names else None
+        lang_id = str(tgt[:, 0:1][0].item())
+        if not self.adapter_names:
+            lang_id = None
+        elif lang_id not in self.adapter_names:
+            lang_id = None
+
         if cache is None:
             cache = self.init_state()
         new_cache = []

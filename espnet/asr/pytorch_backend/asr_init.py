@@ -234,14 +234,14 @@ def load_trained_model(model_path):
     return model, train_args
 
 
-def load_trained_model_multi(model_path, eval_no_adapters=False):
+def load_trained_model_multi(model_path, eval_no_adapters=False, adapter_path=''):
     """Load the trained model for recognition.
 
     Args:
         model_path (str): Path to model.***.best
     """
     idim, odim_tgt, odim_src, train_args = get_model_conf_multi(
-        model_path, os.path.join(os.path.dirname(model_path), 'model.json'))
+            model_path, os.path.join(os.path.dirname(model_path), 'model.json'))
 
     logging.warning('reading model parameters from ' + model_path)
 
@@ -250,13 +250,22 @@ def load_trained_model_multi(model_path, eval_no_adapters=False):
     else:
         model_module = "espnet.nets.pytorch_backend.e2e_asr:E2E"
 
+    # Load adapters from a different path
+    if adapter_path and not eval_no_adapters:
+        _, _, _, adapter_args = get_model_conf_multi(adapter_path)
+        for k, v in vars(train_args).items():
+            if "adapter" in k:
+                setattr(train_args, k, getattr(adapter_args, k))
+                logging.info(f'reset {k}: {getattr(train_args, k)}')
+
     if eval_no_adapters:
         train_args.use_adapters = False
         train_args.adapters = None
+
     model_class = dynamic_import(model_module)
     model = model_class(idim, odim_tgt, odim_src, train_args)
 
-    torch_load(model_path, model)
+    torch_load(model_path, model, adapter_path=adapter_path)
 
     return model, train_args
 

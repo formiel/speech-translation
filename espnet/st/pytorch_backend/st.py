@@ -906,7 +906,11 @@ def trans(args):
 
     """
     set_deterministic_pytorch(args)
-    model, train_args = load_trained_model_multi(args.model, eval_no_adapters=args.eval_no_adapters)
+    logging.info(f'eval-no-adapters: {args.eval_no_adapters}')
+    logging.info(f'adapter-path: {args.adapter_path}')
+    model, train_args = load_trained_model_multi(args.model, 
+                                        eval_no_adapters=args.eval_no_adapters,
+                                        adapter_path=args.adapter_path)
     assert isinstance(model, STInterface)
     # args.ctc_weight = 0.0
     model.trans_args = args

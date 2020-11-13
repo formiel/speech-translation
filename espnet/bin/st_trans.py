@@ -127,6 +127,8 @@ def get_parser():
     # adapter related
     parser.add_argument('--eval-no-adapters', default=False, type=strtobool,
                         help='Evaluate without adapters in the model.')
+    parser.add_argument('--adapter-path', type=str, default='',
+                        help='Pre-trained adapter path to be evaluated.')
     return parser
 
 

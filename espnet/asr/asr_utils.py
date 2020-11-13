@@ -534,7 +534,7 @@ def snapshot_object(target, filename):
     return snapshot_object
 
 
-def torch_load(path, model):
+def torch_load(path, model, adapter_path=''):
     """Load torch model states.
 
     Args:
@@ -542,17 +542,36 @@ def torch_load(path, model):
         model (torch.nn.Module): Torch model.
 
     """
-    if 'snapshot' in os.path.basename(path):
-        model_state_dict = torch.load(path, map_location=lambda storage, loc: storage)['model']
-    else:
-        model_state_dict = torch.load(path, map_location=lambda storage, loc: storage)
+    def _load(path):
+        if 'snapshot' in os.path.basename(path):
+            d = torch.load(path, map_location=lambda storage, loc: storage)['model']
+        else:
+            d = torch.load(path, map_location=lambda storage, loc: storage)
+        return d
+
+    model_state_dict = _load(path)
+    adapter_state_dict = None
+    if adapter_path:
+        adapter_state_dict = _load(adapter_path)
 
     if hasattr(model, 'module'):
         model.module.load_state_dict(model_state_dict)
     else:
-        model.load_state_dict(model_state_dict, strict=False)
+        if adapter_state_dict is not None:
+            logging.info(f'Load adapters weights from {adapter_path}')
+            for k, v in adapter_state_dict.items():
+                if "adapter" in k:
+                    if k in list(model_state_dict.keys()):
+                        logging.info(f'previous vs. loaded {k}: {torch.norm(model_state_dict[k].view(-1)) == torch.norm(adapter_state_dict[k].view(-1))}')
+                    model_state_dict.update({k: adapter_state_dict[k]})
 
-    del model_state_dict
+        model.load_state_dict(model_state_dict, strict=False)
+        if adapter_state_dict is not None:
+            for k, v in adapter_state_dict.items():
+                if "adapter" in k:
+                    logging.info(f'final vs. loaded {k}: {torch.norm(model_state_dict[k].view(-1)) == torch.norm(adapter_state_dict[k].view(-1))}')
+
+    del model_state_dict, adapter_state_dict
 
 
 def torch_resume(snapshot_path, trainer, reset_optimizer=False):

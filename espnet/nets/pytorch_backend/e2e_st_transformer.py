@@ -327,11 +327,6 @@ class E2E(STInterface, torch.nn.Module):
         if not self.use_joint_dict and (self.do_st and self.do_asr):
             self.output_layer = torch.nn.Linear(args.adim, odim_tgt)
             self.output_layer_asr = torch.nn.Linear(args.adim, odim_src)
-        # if not self.use_joint_dict:
-        #     if self.do_st:
-        #         self.output_layer = torch.nn.Linear(args.adim, odim_tgt)
-        #     if self.do_asr:
-        #         self.output_layer_asr = torch.nn.Linear(args.adim, odim_src)
 
         # submodule for MT task
         if self.do_mt:

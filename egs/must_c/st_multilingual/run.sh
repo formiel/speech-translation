@@ -729,7 +729,7 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
     # Use all threads available
     nj=`grep -c ^processor /proc/cpuinfo`
     nj=$(( nj / num_trans_set ))
-    nj=80 # for testing
+    # nj=80 # for testing
 
     if [[ $tag == *"debug"* ]]; then
         nj=1 # for debug

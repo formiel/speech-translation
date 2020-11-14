@@ -510,7 +510,7 @@ def train(args):
     else:
         dtype = torch.float32
 
-    # freeze all weights except for trainable modules in adapters
+    # freeze all weights except for trainable modules in adapters or when do_ft
     if (args.use_adapters and not args.train_adapters) or args.do_ft:
         trainable_modules = args.trainable_modules.split(",")
         for p in model.parameters():

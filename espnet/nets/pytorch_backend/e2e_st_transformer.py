@@ -475,11 +475,14 @@ class E2E(STInterface, torch.nn.Module):
                 lang_embed = self.language_embeddings(tgt_lang_ids) # bs x 1 x idim
                 xs_pad = xs_pad + lang_embed
             src_mask = (~make_pad_mask(ilens.tolist())).to(xs_pad.device).unsqueeze(-2) # bs x 1 x max_ilens
+
+            enc_lang_id, enc_lang_id_src = None, None
             if self.use_adapters_in_enc:
-                enc_lang_id = str(tgt_lang_ids[0].data.cpu().numpy()[0]) if self.do_st else None
-                enc_lang_id_src = str(tgt_lang_ids_src[0].data.cpu().numpy()[0]) if self.do_asr else None
-            else:
-                enc_lang_id = None
+                if self.do_asr:
+                    enc_lang_id_src = str(tgt_lang_ids_src[0].data.cpu().numpy()[0])
+                if self.do_st:
+                    enc_lang_id = str(tgt_lang_ids[0].data.cpu().numpy()[0])                   
+            # forward pass
             hs_pad, hs_mask = self.encoder(xs_pad, src_mask, enc_lang_id)
             hs_pad_src, hs_mask_src = hs_pad, hs_mask
             if self.use_adapters_in_enc and self.do_asr:

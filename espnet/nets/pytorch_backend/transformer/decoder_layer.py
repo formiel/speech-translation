@@ -42,6 +42,7 @@ class DecoderLayer(nn.Module):
                  cross_weight_learnable=False, 
                  cross_weight=0.0,
                  adapters=None,
+                 adapter_before_src_attn=None,
                  ):
         """Construct an DecoderLayer object."""
         super(DecoderLayer, self).__init__()
@@ -50,6 +51,7 @@ class DecoderLayer(nn.Module):
         self.src_attn = src_attn
         self.feed_forward = feed_forward
         self.adapters = adapters
+        self.adapter_before_src_attn = adapter_before_src_attn
         if not cross_shared and cross_self_attn is not None and cross_src_attn is not None:
             self.cross_self_attn = cross_self_attn
             self.cross_src_attn = cross_src_attn
@@ -157,6 +159,10 @@ class DecoderLayer(nn.Module):
         if self.normalize_before:
             x = self.norm2(x)
         y = x
+
+        if lang_id is not None and self.adapter_before_src_attn is not None:
+            x = self.adapter_before_src_attn[lang_id](x, x)[0]
+            # x = residual + x
 
         if self.concat_after:
             x_concat = torch.cat((x, self.src_attn(x, memory, memory, memory_mask)), dim=-1)

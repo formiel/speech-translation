@@ -330,8 +330,19 @@ def main(cmd_args):
     """Run the main training function."""
     parser = get_parser()
     args, _ = parser.parse_known_args(cmd_args)
-    lang_pairs = args.lang_pairs.split(',')
 
+    # logging info
+    if args.verbose > 0:
+        logging.basicConfig(
+            level=logging.INFO, 
+            format='%(asctime)s (%(module)s:%(lineno)d) %(levelname)s: %(message)s')
+    else:
+        logging.basicConfig(
+            level=logging.WARN, 
+            format='%(asctime)s (%(module)s:%(lineno)d) %(levelname)s: %(message)s')
+        logging.warning('Skip DEBUG/INFO messages')
+
+    lang_pairs = args.lang_pairs.split(',')
     if len(lang_pairs) > 1 or args.train_adapters:
         assert os.path.isdir(args.train_json)
         assert os.path.isdir(args.valid_json)
@@ -364,17 +375,6 @@ def main(cmd_args):
         args.backend = 'chainer'
     if 'pytorch_backend' in args.model_module:
         args.backend = 'pytorch'
-
-    # logging info
-    if args.verbose > 0:
-        logging.basicConfig(
-            level=logging.INFO, 
-            format='%(asctime)s (%(module)s:%(lineno)d) %(levelname)s: %(message)s')
-    else:
-        logging.basicConfig(
-            level=logging.WARN, 
-            format='%(asctime)s (%(module)s:%(lineno)d) %(levelname)s: %(message)s')
-        logging.warning('Skip DEBUG/INFO messages')
 
     # If --ngpu is not given,
     #   1. if CUDA_VISIBLE_DEVICES is set, all visible devices

@@ -112,13 +112,17 @@ class E2E(STInterface, torch.nn.Module):
                            help='Number of decoder hidden units')
         # Adapters
         group.add_argument('--adapter-reduction-factor', default=None, type=float,
-                           help='Reduction factor in bottle neck of adapter modules')
+                           help='Reduction factor in bottle neck of adapter modules for decoder')
+        group.add_argument('--adapter-reduction-factor-enc', default=None, type=float,
+                           help='Reduction factor in bottle neck of adapter modules for encoder')
         group.add_argument('--adapter-before-src-attn', default=False, type=strtobool,
                            help='Add adapter before src attn module in decoder')
         group.add_argument('--adapter-after-mha', default=False, type=strtobool,
                            help='Add adapter after multi-head attention')
         group.add_argument('--use-shared-adapters', default=False, type=strtobool,
                            help='Shared adapters')
+        group.add_argument('--use-shared-adapters-enc', default=False, type=strtobool,
+                           help='Shared adapters for encoder')
         return parser
 
     @property
@@ -252,10 +256,12 @@ class E2E(STInterface, torch.nn.Module):
         self.use_adapters_in_enc = getattr(args, "use_adapters_in_enc", False)
         adapter_names = getattr(args, "adapters", None)
         adapter_reduction_factor = getattr(args, "adapter_reduction_factor", None)
+        adapter_reduction_factor_enc = getattr(args, "adapter_reduction_factor_enc", adapter_reduction_factor)
         use_adapters_for_asr = getattr(args, "use_adapters_for_asr", True)
         adapter_before_src_attn = getattr(args, "adapter_before_src_attn", False)
         adapter_after_mha = getattr(args, "adapter_after_mha", False)
         use_shared_adapters = getattr(args, "use_shared_adapters", False)
+        use_shared_adapters_enc = getattr(args, "use_shared_adapters_enc", False)
         # if self.use_adapters and not use_adapters_for_asr:
         #     assert not self.do_asr or \
         #         (self.do_asr and self.num_decoders != 1) or \
@@ -281,9 +287,9 @@ class E2E(STInterface, torch.nn.Module):
                 positional_dropout_rate=args.dropout_rate,
                 attention_dropout_rate=args.transformer_attn_dropout_rate,
                 adapter_names=adapter_names if self.use_adapters_in_enc else None,
-                reduction_factor=adapter_reduction_factor,
+                reduction_factor=adapter_reduction_factor_enc,
                 adapter_after_mha=adapter_after_mha,
-                shared_adapters=use_shared_adapters,
+                shared_adapters=use_shared_adapters_enc,
             )
         if self.do_st:
             logging.info('ST decoder')

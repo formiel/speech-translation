@@ -459,7 +459,9 @@ def load_trained_modules_multi(idim, odim_tgt, odim_src, args, interface=ASRInte
     dual_modules = None
 
     model_class = dynamic_import(args.model_module)
+    logging.info(f'train_args: {[{k: getattr(args, k)} for k in vars(args) if "adapter" in k]}')
     main_model = model_class(idim, odim_tgt, odim_src, args)
+    logging.info(f'model_class wrapper')
     assert isinstance(main_model, interface)
     logging.info('| Before loading pretrained models: {}'.format(
                         sum(p.sum().item() for p in main_model.parameters())))

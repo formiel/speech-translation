@@ -6,8 +6,9 @@
 
 """Encoder self-attention layer definition."""
 
-import torch
+import logging
 
+import torch
 from torch import nn
 
 from espnet.nets.pytorch_backend.transformer.layer_norm import LayerNorm
@@ -35,6 +36,7 @@ class EncoderLayer(nn.Module):
                  normalize_before=True, 
                  concat_after=False,
                  adapters=None,
+                 adapter_after_mha=None,
                  ):
         """Construct an EncoderLayer object."""
         super(EncoderLayer, self).__init__()
@@ -49,6 +51,7 @@ class EncoderLayer(nn.Module):
         if self.concat_after:
             self.concat_linear = nn.Linear(size + size, size)
         self.adapters = adapters
+        self.adapter_after_mha = adapter_after_mha
 
     def forward(self, x, mask, lang_id=None, cache=None):
         """Compute encoded features.
@@ -70,6 +73,7 @@ class EncoderLayer(nn.Module):
             residual = residual[:, -1:, :]
             mask = None if mask is None else mask[:, -1:, :]
 
+        y = x
         if self.concat_after:
             x_concat = torch.cat((x, self.self_attn(x_q, x, x, mask)), dim=-1)
             x = residual + self.concat_linear(x_concat)
@@ -78,16 +82,25 @@ class EncoderLayer(nn.Module):
         if not self.normalize_before:
             x = self.norm1(x)
 
+        # Adapters after MHA
+        if lang_id is not None and self.adapter_after_mha is not None:
+            x = self.adapter_after_mha[lang_id](x, x)[0]
+            x = x + y
+
         residual = x
         if self.normalize_before:
             x = self.norm2(x)
         # x = residual + self.dropout(self.feed_forward(x))
         x = self.dropout(self.feed_forward(x))
+        # logging.info(f'before residual: {torch.norm((x+residual).view(-1))}')
 
         # Adapters
+        # logging.info(f'before adapter: {torch.norm(x.view(-1))}')
         if lang_id is not None and self.adapters is not None:
             x = self.adapters[lang_id](x, x)[0]
+            # logging.info(f'after adapter: {torch.norm(x.view(-1))}')
         x = residual + x
+        # logging.info(f'after residual: {torch.norm(x.view(-1))}')
 
         if not self.normalize_before:
             x = self.norm2(x)

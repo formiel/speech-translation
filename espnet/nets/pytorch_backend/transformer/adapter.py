@@ -7,9 +7,22 @@
 
 """Adapter modules."""
 import math
+import logging
 
 import torch
 from torch import nn
+
+
+def create_adapters(adapter_names, attention_dim, reduction_factor, shared=False):
+    if not adapter_names:
+        return None
+    
+    if shared:
+        adapter = Adapter(attention_dim, int(attention_dim/reduction_factor))
+        return nn.ModuleDict({k: adapter for k in adapter_names})
+
+    return nn.ModuleDict({k: Adapter(attention_dim, int(attention_dim/reduction_factor))
+                                for k in adapter_names})
 
 
 class Activation_Function_Class(nn.Module):

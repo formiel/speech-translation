@@ -43,6 +43,7 @@ class DecoderLayer(nn.Module):
                  cross_weight=0.0,
                  adapters=None,
                  adapter_before_src_attn=None,
+                 adapter_after_mha=None,
                  ):
         """Construct an DecoderLayer object."""
         super(DecoderLayer, self).__init__()
@@ -52,6 +53,7 @@ class DecoderLayer(nn.Module):
         self.feed_forward = feed_forward
         self.adapters = adapters
         self.adapter_before_src_attn = adapter_before_src_attn
+        self.adapter_after_mha = adapter_after_mha
         if not cross_shared and cross_self_attn is not None and cross_src_attn is not None:
             self.cross_self_attn = cross_self_attn
             self.cross_src_attn = cross_src_attn
@@ -160,6 +162,7 @@ class DecoderLayer(nn.Module):
             x = self.norm2(x)
         y = x
 
+        # Adapter before source attention
         if lang_id is not None and self.adapter_before_src_attn is not None:
             x = self.adapter_before_src_attn[lang_id](x, x)[0]
             # x = residual + x
@@ -188,6 +191,11 @@ class DecoderLayer(nn.Module):
         
         if not self.normalize_before:
             x = self.norm2(x)
+        
+        # Adapter after multi-head attention
+        if lang_id is not None and self.adapter_after_mha is not None:
+            x = self.adapter_after_mha[lang_id](x, x)[0]
+            x = x + y
         
         # Feed forward
         residual = x

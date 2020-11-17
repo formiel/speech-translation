@@ -93,8 +93,10 @@ class CTC(torch.nn.Module):
             ys_hat = ys_hat.to(dtype=torch.float32)
         else:
             # use GPU when using the cuDNN implementation
-            ys_true = to_device(self, ys_true)
-        self.loss = to_device(self, self.loss_fn(ys_hat, ys_true, hlens, olens)).to(dtype=dtype)
+            # ys_true = to_device(self, ys_true)
+            ys_true = ys_true.to(ys_hat.device)
+        # self.loss = to_device(self, self.loss_fn(ys_hat, ys_true, hlens, olens)).to(dtype=dtype)
+        self.loss = self.loss_fn(ys_hat, ys_true, hlens, olens).to(ys_hat.device).to(dtype=dtype)
         if self.reduce:
             # NOTE: sum() is needed to keep consistency since warpctc return as tensor w/ shape (1,)
             # but builtin return as tensor w/o shape (scalar).

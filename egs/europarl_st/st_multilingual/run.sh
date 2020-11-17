@@ -116,7 +116,7 @@ if (( $lang_count != 1 )); then
     use_lid=true
 fi
 
-if (( $lang_count == 8 )) || [[ ${use_adapters} == "true" ]] || [[ ${tag} == *"full_ft"* ]]; then
+if (( $lang_count == 7 )) || [[ ${use_adapters} == "true" ]] || [[ ${tag} == *"full_ft"* ]] || [[ ${tag} == *"trained_on_mustc"* ]]; then
     prefix_tmp="lgs_all"
 else
     prefix_tmp="lgs_${tgt_langs}"
@@ -128,7 +128,7 @@ suffix_mt=
 if [[ ${use_adapters} == "true" ]]; then
     train_type="adapters"
 else
-    if [[ ${tag} == *"full_ft"* ]]; then
+    if [[ ${tag} == *"full_ft"* ]] || [[ ${tag} == *"trained_on_mustc"* ]]; then
         train_type="full_ft"
     else
         train_type="pretrain"
@@ -177,6 +177,11 @@ set -o pipefail
 
 train_set=train_sp.${src_lang}-${tgt_langs}
 train_dev=dev.${src_lang}-${tgt_langs}
+
+train_set_dict=${train_set}
+if [[ ${train_adapters} == "true" ]] || [[ ${use_multi_dict} == "true" ]]; then
+    train_set_dict=train_sp.${src_lang}-de_es_fr_it_nl_pt_ro
+fi
 
 num_trans_set=0
 if [[ -z ${trans_set} ]]; then
@@ -442,13 +447,13 @@ echo "| tensorboard_dir: ${tensorboard_dir}"
 # Data folders
 datadir_tmp=${datadir}
 datadir=${datadir_tmp}/${tgt_langs}/use_${dprefix}/src${nbpe_src}_tgt${nbpe}/${train_type}
-# if [[ ${use_multi_dict} == "true" ]]; then
-#     datadir=${datadir_tmp}/de_es_fr_it_nl_pt_ro_ru/use_${dprefix}/src${nbpe_src}_tgt${nbpe}
+if [[ ${use_multi_dict} == "true" ]]; then
+    datadir=${datadir_tmp}/de_es_fr_it_nl_pt_ro/use_${dprefix}/src${nbpe_src}_tgt${nbpe}/${train_type}
 # elif (( $lang_count == 1 )) && [[ ${train_adapters} == "true" ]]; then
 #     datadir=${datadir_tmp}/${tgt_langs}_train_adapters/use_${dprefix}/src${nbpe_src}_tgt${nbpe}
 # elif (( $lang_count == 1 )) && [[ ${train_adapters} == "false" ]]; then
 #     datadir=${datadir}/use_lid_${use_lid}
-# fi
+fi
 
 if (( $lang_count == 1 )) && [[ ${train_adapters} == "false" ]]; then
     train_json_dir=${datadir}/train_sp/${src_lang}-${tgt_langs}.json
@@ -459,13 +464,13 @@ else
 fi
 
 if [[ ${use_joint_dict} == "true" ]]; then
-    dname=${train_set}_${bpemode}${nbpe}_${tgt_case}_${suffix}
+    dname=${train_set_dict}_${bpemode}${nbpe}_${tgt_case}_${suffix}
     dict_tgt=${datadir}/lang_1spm/${dname}.txt
     dict_src=${datadir}/lang_1spm/${dname}.txt
     bpemodel_tgt=data/lang_1spm/use_${dprefix}/${dname}
     bpemodel_src=data/lang_1spm/use_${dprefix}/${dname}
 else
-    dname=${train_set}_${bpemode}_src${nbpe_src}${src_case}_tgt${nbpe}${tgt_case}_${suffix}
+    dname=${train_set_dict}_${bpemode}_src${nbpe_src}${src_case}_tgt${nbpe}${tgt_case}_${suffix}
     dict_tgt=${datadir}/lang_1spm/${dname}.tgt.txt
     dict_src=${datadir}/lang_1spm/${dname}.src.txt
     bpemodel_tgt=data/lang_1spm/use_${dprefix}/${dname}.tgt

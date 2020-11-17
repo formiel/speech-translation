@@ -20,7 +20,7 @@ from espnet.nets.pytorch_backend.transformer.multi_layer_conv import MultiLayere
 from espnet.nets.pytorch_backend.transformer.positionwise_feed_forward import PositionwiseFeedForward
 from espnet.nets.pytorch_backend.transformer.repeat import repeat, _get_clones
 from espnet.nets.pytorch_backend.transformer.subsampling import Conv2dSubsampling
-from espnet.nets.pytorch_backend.transformer.adapter import Adapter
+from espnet.nets.pytorch_backend.transformer.adapter import Adapter, create_adapters
 
 
 class Encoder(torch.nn.Module):
@@ -62,6 +62,8 @@ class Encoder(torch.nn.Module):
                  padding_idx=-1,
                  adapter_names=None,
                  reduction_factor=4.0,
+                 adapter_after_mha=None,
+                 shared_adapters=False,
                  ):
         """Construct an Encoder object."""
         super(Encoder, self).__init__()
@@ -120,7 +122,7 @@ class Encoder(torch.nn.Module):
         #         adapters=nn.ModuleDict({k: Adapter(attention_dim, int(attention_dim/reduction_factor))
         #                                 for k in adapter_names}) if adapter_names else None,
         #     )
-        # )
+        # )     
         encoder_layer = EncoderLayer(
                 attention_dim,
                 MultiHeadedAttention(attention_heads, attention_dim, attention_dropout_rate),
@@ -128,8 +130,9 @@ class Encoder(torch.nn.Module):
                 dropout_rate,
                 normalize_before,
                 concat_after,
-                adapters=nn.ModuleDict({k: Adapter(attention_dim, int(attention_dim/reduction_factor))
-                                        for k in adapter_names}) if adapter_names else None,
+                adapters=create_adapters(adapter_names, attention_dim, reduction_factor, shared=shared_adapters),
+                adapter_after_mha=create_adapters(adapter_names, attention_dim, reduction_factor) 
+                                                                            if adapter_after_mha else None,
             )
         self.encoders = _get_clones(encoder_layer, num_blocks)
 

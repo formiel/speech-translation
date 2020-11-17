@@ -18,7 +18,7 @@ from espnet.nets.pytorch_backend.transformer.mask import subsequent_mask
 from espnet.nets.pytorch_backend.transformer.positionwise_feed_forward import PositionwiseFeedForward
 from espnet.nets.pytorch_backend.transformer.repeat import repeat, _get_clones
 from espnet.nets.scorer_interface import ScorerInterface
-from espnet.nets.pytorch_backend.transformer.adapter import Adapter
+from espnet.nets.pytorch_backend.transformer.adapter import Adapter, create_adapters
 
 
 class Decoder(ScorerInterface, torch.nn.Module):
@@ -61,6 +61,8 @@ class Decoder(ScorerInterface, torch.nn.Module):
                  adapter_names=None,
                  reduction_factor=4.0,
                  adapter_before_src_attn=False,
+                 adapter_after_mha=False,
+                 shared_adapters=False,
                  ):
         """Construct an Decoder object."""
         torch.nn.Module.__init__(self)
@@ -147,10 +149,9 @@ class Decoder(ScorerInterface, torch.nn.Module):
                 cross_shared=cross_shared,
                 cross_weight_learnable=cross_weight_learnable,
                 cross_weight=cross_weight,
-                adapters=nn.ModuleDict({k: Adapter(attention_dim, int(attention_dim/reduction_factor))
-                                                    for k in adapter_names}) if adapter_names else None,
-                adapter_before_src_attn=nn.ModuleDict({k: Adapter(attention_dim, int(attention_dim/reduction_factor))
-                                                    for k in adapter_names}) if adapter_before_src_attn else None,
+                adapters=create_adapters(adapter_names, attention_dim, reduction_factor, shared=shared_adapters),
+                adapter_before_src_attn=create_adapters(adapter_names, attention_dim, reduction_factor) if adapter_before_src_attn else None,
+                adapter_after_mha=create_adapters(adapter_names, attention_dim, reduction_factor) if adapter_after_mha else None,
             )
         self.decoders = _get_clones(decoder_layer, num_blocks)
 

@@ -3,6 +3,7 @@
 import logging
 import os
 import torch
+import copy
 
 from collections import OrderedDict
 
@@ -29,11 +30,16 @@ def transfer_verification(model_state_dict, partial_state_dict, modules):
 
     """
     partial_modules = []
-    for key_p, value_p in partial_state_dict.items():
+    partial_state_dict_org = copy.deepcopy(partial_state_dict)
+    for key_p, value_p in partial_state_dict_org.items():
         if any(key_p.startswith(m) for m in modules):
-            if value_p.shape == model_state_dict[key_p].shape:
-                partial_modules += [(key_p, value_p.shape)]
-    return len(partial_modules) > 0
+            if key_p in list(model_state_dict.keys()):
+                if value_p.shape == model_state_dict[key_p].shape:
+                    partial_modules += [(key_p, value_p.shape)]
+            else:
+                logging.info(f'Removing {key_p}...')
+                del partial_state_dict[key_p]
+    return len(partial_modules) > 0, partial_state_dict
 
 
 def get_partial_state_dict(model_state_dict, modules, 
@@ -255,8 +261,8 @@ def load_trained_model_multi(model_path, eval_no_adapters=False, adapter_path=''
         _, _, _, adapter_args = get_model_conf_multi(adapter_path)
         for k, v in vars(train_args).items():
             if "adapter" in k:
-                setattr(train_args, k, getattr(adapter_args, k))
-                logging.info(f'reset {k}: {getattr(train_args, k)}')
+                setattr(train_args, k, getattr(adapter_args, k, False))
+                logging.info(f'reset {k}: {getattr(train_args, k, False)}')
 
     if eval_no_adapters:
         train_args.use_adapters = False
@@ -330,6 +336,7 @@ def get_trained_model_state_dict_multi(model_path):
         idim, odim_tgt, odim_src, args = get_model_conf_multi(model_path, conf_path)
     except:
         idim, odim_tgt, args = get_model_conf(model_path, conf_path)
+        logging.info(f'reset args.model_module')
         setattr(args, "model_module", "espnet.nets.pytorch_backend.e2e_st_transformer:E2E")
         odim_src = odim_tgt
 
@@ -466,7 +473,7 @@ def load_trained_modules_multi(idim, odim_tgt, odim_src, args, interface=ASRInte
             if os.path.isfile(model_path):
                 model_state_dict, is_lm = get_trained_model_state_dict_multi(model_path)
 
-                if all(mod.startswith('dual_decoder') for mod in modules):
+                if any(mod.startswith('dual_decoder') for mod in modules):
                     dual_modules = modules
                     modules = filter_modules_dual_decoders(model_state_dict, modules)
                 else:
@@ -485,7 +492,8 @@ def load_trained_modules_multi(idim, odim_tgt, odim_src, args, interface=ASRInte
                             init_from_decoder_mt=args.init_from_decoder_mt)
 
                     if partial_state_dict:
-                        if transfer_verification(main_state_dict, partial_state_dict, modules):
+                        override, partial_state_dict = transfer_verification(main_state_dict, partial_state_dict, modules)
+                        if override:
                             logging.warning('loading %s from model: %s', 
                                 list(set(['.'.join(m.split('.')[:2]) for m in modules])), model_path)
                             

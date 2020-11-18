@@ -39,6 +39,7 @@ europarl_st=
 all_langs=de_en_es_fr_it_nl_pl_pt_ro
 src_lang=en
 tgt_langs=
+removed_langs=ru
 
 # pre-training related
 asr_model=
@@ -116,7 +117,9 @@ if (( $lang_count != 1 )); then
     use_lid=true
 fi
 
-if (( $lang_count == 7 )) || [[ ${use_adapters} == "true" ]] || [[ ${tag} == *"full_ft"* ]] || [[ ${tag} == *"trained_on_mustc"* ]]; then
+if (( $lang_count == 8 )) || [[ ${use_adapters} == "true" ]] \
+    || [[ ${tag} == *"full_ft"* ]] || [[ ${tag} == *"trained_on_mustc"* ]] \
+    || [[ ${tag} == *"zero_shot"* ]]; then
     prefix_tmp="lgs_all"
 else
     prefix_tmp="lgs_${tgt_langs}"
@@ -128,20 +131,14 @@ suffix_mt=
 if [[ ${use_adapters} == "true" ]]; then
     train_type="adapters"
 else
-    if [[ ${tag} == *"full_ft"* ]] || [[ ${tag} == *"trained_on_mustc"* ]]; then
+    if [[ ${tag} == *"full_ft"* ]] || [[ ${tag} == *"trained_on_mustc"* ]] \
+        || [[ ${tag} == *"zero_shot"* ]]; then
         train_type="full_ft"
     else
         train_type="pretrain"
     fi
 fi
 suffix="${prefix_tmp}_${train_type}"
-
-# if [[ ${suffix} == *"adapters"* ]] || [[ ${suffix} == *"full_ft"* ]]; then
-#     if [ -z ${dict} ] || [ -z ${bpemodel} ]; then
-#         echo "dict and bpemodel are required for adapter-based fine_tuning."
-#         exit 1
-#     fi
-# fi
 
 echo "*** General parameters ***"
 echo "| ngpu: ${ngpu}"
@@ -153,6 +150,7 @@ echo "| language pairs: ${lang_pairs}"
 echo "*** Training-related parameters ***"
 echo "| nbpe: ${nbpe}"
 echo "| nbpe_src: ${nbpe_src}"
+echo "| train_type: ${train_type}"
 echo "| dictionary prefix: ${dprefix}"
 echo "| dictionary suffix: ${suffix}"
 echo "| dict: ${dict}"
@@ -179,7 +177,8 @@ train_set=train_sp.${src_lang}-${tgt_langs}
 train_dev=dev.${src_lang}-${tgt_langs}
 
 train_set_dict=${train_set}
-if [[ ${train_adapters} == "true" ]] || [[ ${use_multi_dict} == "true" ]]; then
+if [[ ${train_adapters} == "true" ]] || [[ ${use_multi_dict} == "true" ]] \
+    || [[ ${tag} == *"zero_shot"* ]]; then
     train_set_dict=train_sp.${src_lang}-de_es_fr_it_nl_pt_ro
 fi
 
@@ -534,7 +533,8 @@ if [[ ${stage} -le 4 ]] && [[ ${stop_stage} -ge 4 ]]; then
         --train-adapters ${train_adapters} \
         --use-multi-dict ${use_multi_dict} \
         --use-adapters-for-asr ${use_adapters_for_asr} \
-        --use-adapters-in-enc ${use_adapters_in_enc}
+        --use-adapters-in-enc ${use_adapters_in_enc} \
+        --removed-langs ${removed_langs}
         # --enc-init ${asr_model} \
         # --dec-init ${st_model}
     

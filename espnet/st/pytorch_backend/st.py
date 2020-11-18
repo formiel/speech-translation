@@ -357,8 +357,16 @@ def train(args):
         logging.warning('cuda is not available')
 
     # language pairs
-    lang_pairs = args.lang_pairs if (not args.train_adapters and not args.use_multi_dict) else \
-                            "en-de,en-es,en-fr,en-it,en-nl,en-pt,en-ro,en-ru" # TODO: fix for europarl
+    removed_langs = getattr(args, "removed_langs", None)
+    lang_pairs_dict = getattr(args, "lang_pairs_dict")
+    if removed_langs is not None:
+        removed_langs = removed_langs.split("_")
+        removed_langs = [f"en-{l}" for l in removed_langs]
+        lang_pairs_dict = lang_pairs_dict.split(",")
+        lang_pairs_dict = ",".join(list(set(lang_pairs_dict) - set(removed_langs)))
+    lang_pairs = args.lang_pairs if (not args.train_adapters and 
+                                not args.use_multi_dict and not removed_langs) \
+                                else lang_pairs_dict
     lang_pairs = sorted(lang_pairs.split(','))
     args.one_to_many = True if len(lang_pairs) > 1 else False
     if args.one_to_many:
@@ -371,9 +379,11 @@ def train(args):
     # get paths to data
     if args.one_to_many and not args.use_multi_dict:
         train_jpaths = [os.path.join(args.train_json, fname) for fname in 
-                sorted(os.listdir(args.train_json)) if fname.endswith('.json')]
+                sorted(os.listdir(args.train_json)) if fname.endswith('.json')
+                and fname.split(".")[0] in args.lang_pairs.split(",")]
         valid_jpaths = [os.path.join(args.valid_json, fname) for fname in 
-                sorted(os.listdir(args.valid_json)) if fname.endswith('.json')]
+                sorted(os.listdir(args.valid_json)) if fname.endswith('.json')
+                and fname.split(".")[0] in args.lang_pairs.split(",")]
     else:
         train_jpaths = [args.train_json]
         valid_jpaths = [args.valid_json]

@@ -778,7 +778,7 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
         fi
 
         # Compute BLEU
-        if [[ $tag != *"asr_model"* ]]; then
+        if [[ $tag != *"asr_model"* ]] && [[ $decode_config != *"asr"* ]]; then
             echo "Compute BLEU..."
             chmod +x local/score_bleu_st.sh
             local/score_bleu_st.sh --case ${tgt_case} \
@@ -789,10 +789,10 @@ if [[ ${stage} -le 5 ]] && [[ ${stop_stage} -ge 5 ]]; then
         fi
 
         # Compute WER
-        if [[ $tag != *"mt_model"* ]] && [[ $tag != *"no_asr"* ]]; then
+        if [[ $tag != *"mt_model"* ]] && [[ $tag != *"no_asr"* ]] && [[ $decode_config == *"asr"* ]]; then
             echo "Compute WER score..."
             idx=1
-            if [[ $tag == *"asr_model"* ]]; then
+            if [[ $tag == *"asr_model"* ]] || [[ $decode_config == *"asr"* ]]; then
                 idx=0
             fi
             local/score_sclite_st.sh --case ${src_case} --wer true \

@@ -450,7 +450,10 @@ def train(args):
             args.adapters = None
     else:
         args.adapters = None
+    if args.use_adapters:
+        args.homogeneous_batch = True
     logging.info(f'| lang_pairs: {lang_pairs}')
+    logging.info(f'| homogeneous_batch: {args.homogeneous_batch}')
     logging.info(f'| args.adapters: {args.adapters}')
     
     # Initialize with pre-trained ASR encoder and MT decoder
@@ -580,7 +583,7 @@ def train(args):
     valid_all_pairs = [None] * num_langs
     batch_size = args.batch_size//num_langs if (num_langs > 1 and 
                                                 (args.do_st or args.do_mt) and
-                                                not args.use_adapters) \
+                                                not args.homogeneous_batch) \
                                             else args.batch_size
     min_batch_size = args.ngpu if (args.ngpu > 1 and args.do_mt) else 1
 
@@ -615,7 +618,7 @@ def train(args):
         cycle_valid = [cycle(x) for x in valid_all_pairs]
         num_batches_train = max(len(i) for i in train_all_pairs)
         num_batches_valid = max(len(i) for i in valid_all_pairs)
-        if (args.do_st or args.do_mt) and not args.use_adapters:
+        if (args.do_st or args.do_mt) and not args.homogeneous_batch:
             cycle_train = [cycle(x) for x in train_all_pairs]
             cycle_valid = [cycle(x) for x in valid_all_pairs]
 

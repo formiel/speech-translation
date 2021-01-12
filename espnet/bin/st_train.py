@@ -254,6 +254,8 @@ def get_parser(parser=None, required=True):
     parser.add_argument('--num-decoders', choices=[1, 2], default=2, type=int,
                         help='Number of decoders in multilingual ST.')
     # fine-tuning related
+    parser.add_argument('--homogeneous-batch', default=False, type=strtobool,
+                        help='Use homogeneous batches in training.')
     parser.add_argument('--use-adapters', default=False, type=strtobool,
                         help='Use adapters for fine-tuning pre-trained model.')
     parser.add_argument('--train-adapters', default=False, type=strtobool,

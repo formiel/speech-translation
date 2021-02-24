@@ -3,11 +3,11 @@
 .vscode/.ropeproject/objectdb
 
 egs/must_c/st_multilingual/conf/_*
-egs/must_c/st_multilingual/slurm*
-egs/must_c/st_multilingual/tools*
+egs/must_c/st_multilingual/_slurm*
+egs/must_c/st_multilingual/_tools*
 egs/must_c/st_multilingual/_*
 
 egs/europarl_st/st_multilingual/conf/_*
-egs/europarl_st/st_multilingual/slurm*
-egs/europarl_st/st_multilingual/tools*
+egs/europarl_st/st_multilingual/_slurm*
+egs/europarl_st/st_multilingual/_tools*
 egs/europarl_st/st_multilingual/_*

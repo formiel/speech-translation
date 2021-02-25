@@ -16,7 +16,7 @@ This is the codebase for the paper [*Dual-decoder Transformer for Joint Automati
 
 
 # 1. Pre-trained models
-Pre-trained models are available for download in the links below. To replicate the results, please follow [Section 5 Decoding](#5-decoding).
+Pre-trained models are available for download in the links below. This table shows the performance on the MuST-C test set. To replicate the results, please follow [Section 5 Decoding](#5-decoding).
 
 |   |  type | side  | self  | src  | merge | epochs |  WER | BLEU | de | es | fr | it | nl | pt | ro | ru |
 |---|:---|:---|:---|:---|:---|:---|:---|---|---|---|---|---|---|---|---|---|

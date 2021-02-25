@@ -23,10 +23,10 @@ Pre-trained models are available for download in the links below. To replicate t
 |  <td colspan=5>Inaguma et al. [1]| 50 | 12.0| 25.05 | 22.91 | 27.96 | 32.69 | 23.75 | 27.43 | 28.01 | 21.90 | **15.75** |
 |  <td colspan=5>Gangi et al. [2]|  | - | - | 17.70 | 20.90 | 26.50 | 18.00 | 20.00 | 22.60 | - | - |
 |  <td colspan=5>Gangi et al. [2]|  | -| 17.55  | 16.50 | 18.90 | 24.50 | 16.20 | 17.80 | 20.80 | 15.90 | 9.80 |
-|[Link](https://zenodo.org/record/4559841/files/dict1_bpe8k_independent_plus2.tar.gz?download=1)| `independent++` ||||| 25 | 11.6 | 24.60 | 22.82 |27.20 |32.11 |23.34 |26.67 |28.98 |21.37 |14.34 |
-|[Link](https://zenodo.org/record/4559841/files/dict1_bpe8k_dual_decoder_xself_xsrc_xconcat.tar.gz?download=1)| `par` | `both` | :heavy_check_mark: | :heavy_check_mark: | `concat` | 25 | 11.6 | 25.00 | 22.74 |27.59 |32.86 |23.50 |26.97 |29.51 |21.94 |14.88 |    
-|[Link](https://zenodo.org/record/4559841/files/dict1_bpe8k_dual_decoder_xsrc_xsum_waitk_asr3.tar.gz?download=1)| `par`<sup>`R3`</sup> | `both` | - | :heavy_check_mark: | `sum` | 25 | 11.6 | 24.87 |  22.84 |27.92 |32.12 |23.61 |27.29 |29.48 |21.16 |14.50 | 
-|[Link](https://zenodo.org/record/4559841/files/dict1_bpe8k_dual_decoder_xsrc_xsum_plus2.tar.gz?download=1)| `par++` | `both` | - | :heavy_check_mark: | `sum` | 25 | **11.4**| **25.62** | **23.63** |**28.12** |**33.45** |**24.18** |**27.55** |**29.95** |**22.87** |15.21 |
+|[Link](https://zenodo.org/record/4559964#.YDgvCS2cb_R)| `independent++` ||||| 25 | 11.6 | 24.60 | 22.82 |27.20 |32.11 |23.34 |26.67 |28.98 |21.37 |14.34 |
+|[Link](https://zenodo.org/record/4559964#.YDgvCS2cb_R)| `par` | `both` | :heavy_check_mark: | :heavy_check_mark: | `concat` | 25 | 11.6 | 25.00 | 22.74 |27.59 |32.86 |23.50 |26.97 |29.51 |21.94 |14.88 |    
+|[Link](https://zenodo.org/record/4559964#.YDgvCS2cb_R)| `par`<sup>`R3`</sup> | `both` | - | :heavy_check_mark: | `sum` | 25 | 11.6 | 24.87 |  22.84 |27.92 |32.12 |23.61 |27.29 |29.48 |21.16 |14.50 | 
+|[Link](https://zenodo.org/record/4559964#.YDgvCS2cb_R)| `par++` | `both` | - | :heavy_check_mark: | `sum` | 25 | **11.4**| **25.62** | **23.63** |**28.12** |**33.45** |**24.18** |**27.55** |**29.95** |**22.87** |15.21 |
 
 [1] Inaguma et al., 2020. Espnet-st: All-in-one speech translation toolkit. (Bilingual one-to-one models)
 

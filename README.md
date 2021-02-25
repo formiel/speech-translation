@@ -113,39 +113,52 @@ git clone https://github.com/moses-smt/mosesdecoder.git
 1. Run the following command to process features and prepare data in `json` format.
 
 ```bash
-bash run.sh --stage 0 \
+bash run.sh --ngpu 0 \
+            --stage 0 \
             --stop-stage 2 \
-            --ngpu 0 \
-            --must-c ${MUSTC_ROOT}
+            --must-c $MUSTC_ROOT \
+            --tgt-langs de_es_fr_it_nl_pt_ro_ru \
+            --nbpe 8000 \
+            --nbpe_src 8000
 ```
 where `MUSTC_ROOT` is directory where you save raw MuST-C data.
 
 2. Create symlinks so that the processed data is saved in the required strutured for training.
 ```bash
-python create_symlinks.py --output-dir ${DATA_DIR}
+python tools/create_symlinks.py --input-dir /path/to/dump \
+                                --output-dir ${DATA_DIR} \
+                                --use-lid --use-joint-dict
 ``` 
-where `${DATA_DIR}` is the path to the input folder for training. Its structure is as below.
+where `${DATA_DIR}` is the path to the data folder for training. Its structure is as below.
 ```
 ${DATA_DIR}
 └──${tgt_langs}
-    └──train_sp
-        └──en-de.json
-        └──en-es.json
-        └──...
-    └──dev
-        └──en-de.json
-        └──en-es.json
-        └──...
-    └──tst-COMMON
-        └──en-de.json
-        └──en-es.json
-        └──...
-    └──tst-HE
-        └──en-de.json
-        └──en-es.json
-        └──...
-    └──lang_1spm
-        train_sp.en-${tgt_langs}.${tgt_langs}_bpe8000_units_tc_${suffix}.txt
+    └──use_dict1
+    |    └──src8000_tgt8000
+    |    |   └──train_sp
+    |    |        └──en-de.json
+    |    |        └──en-es.json
+    |    |        └──...
+    |    |    └──dev
+    |    |        └──en-de.json
+    |    |        └──en-es.json
+    |    |        └──...
+    |    |    └──tst-COMMON
+    |    |        └──en-de.json
+    |    |        └──en-es.json
+    |    |        └──...
+    |    |    └──tst-HE
+    |    |        └──en-de.json
+    |    |        └──en-es.json
+    |    |        └──...
+    |    |    └──lang_1spm
+    |    |        train_sp.en-${tgt_langs}_bpe8000_tc_${suffix}.txt
+    |    └──src32000_tgt32000
+    |        ....
+    └──use_dict2
+         └──src8000_tgt8000
+         └──src8000_tgt32000
+         ....
 ```
 In which, `${tgt_langs}` is the target languages separated by `_`. For example, for a model trained on 8 languages, `${tgt_langs}` is `de_es_fr_it_nl_pt_ro_ru`.
 

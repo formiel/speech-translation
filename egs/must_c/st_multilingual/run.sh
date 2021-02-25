@@ -17,12 +17,6 @@ stop_stage=
 ngpu=               # number of gpus ("0" uses cpu, otherwise use gpu)
 nj=                 # number of parallel jobs for decoding
 debugmode=4
-dumpdir=dump        # directory to dump full features
-expdir=exp          # directory to save experiment folders
-tensorboard_dir=tensorboard
-datadir=            # directory where multilingual data folders are saved
-train_config_dir=   # directory where training configs are saved
-decode_config_dir=  # directory where decode confis are saved
 N=0                 # number of minibatches to be used (mainly for debugging). 
                     # "0" uses all minibatches.
 verbose=1           # verbose option
@@ -30,15 +24,21 @@ resume=             # Resume the training from snapshot
 seed=1              # seed to generate random number
 do_delta=false      # feature configuration
 
-# Path to raw MuST-C data
-must_c=
+# paths to data, features, etc.
+must_c=             # path to raw MuST-C data
+dumpdir=dump        # directory to dump full features
+datadir=            # directory where multilingual data is saved
+expdir=exp          # directory to save experiment folders
+tensorboard_dir=tensorboard
+train_config_dir=   # directory where training configs are saved
+decode_config_dir=  # directory where decode confis are saved
 
-# target language related
+# target language(s)
 tgt_langs=
 # you can choose from de, es, fr, it, nl, pt, ro, ru
 # To train the multilingual model, segment languages with _ as follows:
 # e.g., tgt_lang="de_es_fr"
-use_lid=true         # if false then not use language id (for bilingual systems)
+use_lid=true         # if false then not use language id (for bilingual models)
 
 # pre-training related
 asr_model=
@@ -49,18 +49,19 @@ init_from_decoder_mt=
 # training related
 preprocess_config=
 do_st=                       # if false, train ASR model
+do_mt=                       # if true then train MT model
 use_adapters=                # if true, use adapter for fine-tuning
 train_adapters=              # if true, train adapter from scratch
 use_adapters_for_asr=        # if true, then add adapters for transcription
 use_adapters_in_enc=         # if true, use adapters in encoder
-do_mt=                       # if true then train MT model
 early_stop_criterion=validation/main/acc
 
-# preprocessing related
+# text-preprocessing
 src_case=lc.rm      # lc.rm: lowercase with punctuation removal
 tgt_case=tc         # tc: truecase
-use_joint_dict=     # if true, use one dictionary for source and target
-use_multi_dict=     # if true, use dictionary for all target languages
+use_joint_dict=true # if true, use joint dictionary for source and target,
+                    # else use separate dictionaries for source and target.
+use_multi_dict=     # if true, use dictionary for all languages
 
 # bpemode (unigram or bpe)
 bpemode=bpe
@@ -77,7 +78,7 @@ remove_non_verbal_eval=true  # if true, then remove non-verbal tokens in evaluat
 eval_no_adapters=
 
 # model average related (only for transformer)
-n_average=1                  # the number of ST models to be averaged,
+n_average=5                  # the number of ST models to be averaged,
                              # 1: disable model averaging and choose best model.
 use_valbest_average=true     # if true, use models with best validation.
                              # if false, use last `n_average` models.
@@ -87,10 +88,10 @@ tag="" # tag for managing experiments.
 
 . utils/parse_options.sh || exit 1;
 
-# training configuration
+# path to training configuration
 train_config=${train_config_dir}/${tag}.yaml
 
-# Language related parameters
+# get language pairs
 tgt_langs=$(echo "$tgt_langs" | tr '_' '\n' | sort | tr '\n' '_')
 tgt_langs=$(echo ${tgt_langs::-1})
 lang_pairs=""
@@ -101,35 +102,33 @@ for lang in $(echo ${tgt_langs} | tr '_' ' '); do
 done
 lang_pairs=$(echo ${lang_pairs::-1})
 
-# use language ID if there is more than 1 target languages
+# use language ID if there is more than 1 target language
 if (( $lang_count != 1 )); then
     use_lid=true
 fi
 
 # prefix for dictionaries
-if [[ ${use_joint_dict} == "true" ]]; then
-    dprefix="dict1"
-else
+dprefix="dict1"
+if [[ ${use_joint_dict} != "true" ]]; then
     dprefix="dict2"
 fi
 
 # suffix for dictionaries
-if (( $lang_count == 8 )); then
-    suffix="lgs_all8"
-elif (( $lang_count == 1 )); then
+suffix="lgs_${tgt_langs}"
+if (( $lang_count == 1 )); then
     suffix="lgs_${tgt_langs}_id_${use_lid}"
-else
-    suffix="lgs_${tgt_langs}"
+elif (( $lang_count == 8 )); then
+    suffix="lgs_all8"
 fi
+
 if [[ ${train_adapters} == "true" ]] || [[ ${use_multi_dict} == "true" ]]; then
     suffix="lgs_all8"
 fi
 
 # suffix for mt model
+suffix_mt=""
 if [[ ${do_mt} == "true" ]]; then
     suffix_mt="_do_mt"
-else
-    suffix_mt=""
 fi
 
 echo "*** General parameters ***"
@@ -215,10 +214,10 @@ if [[ ${stage} -le 1 ]] && [[ ${stop_stage} -ge 1 ]]; then
 
     for lang in $(echo ${tgt_langs} | tr '_' ' '); do
         fbankdir="fbank_${lang}"
-        train_set_lang=train_sp.en-${lang}.${lang}
-        train_dev_lang=dev.en-${lang}.${lang}
-        feat_tr_dir=${dumpdir}/${train_set_lang}/delta${do_delta}; mkdir -p ${feat_tr_dir}
-        feat_dt_dir=${dumpdir}/${train_dev_lang}/delta${do_delta}; mkdir -p ${feat_dt_dir}
+        train_set_lg=train_sp.en-${lang}.${lang}
+        train_dev_lg=dev.en-${lang}.${lang}
+        feat_tr_dir_lg=${dumpdir}/${train_set_lg}/delta${do_delta}; mkdir -p ${feat_tr_dir_lg}
+        feat_dt_dir_lg=${dumpdir}/${train_dev_lg}/delta${do_delta}; mkdir -p ${feat_dt_dir_lg}
         # Generate the fbank features; by default 80-dimensional fbanks with pitch on each frame
         for x in train.en-${lang} dev.en-${lang} tst-COMMON.en-${lang} tst-HE.en-${lang}; do
             steps/make_fbank_pitch.sh --cmd "$train_cmd" --nj 32 --write_utt2num_frames true \
@@ -236,18 +235,20 @@ if [[ ${stage} -le 1 ]] && [[ ${stop_stage} -ge 1 ]]; then
         steps/make_fbank_pitch.sh --cmd "$train_cmd" --nj 32 --write_utt2num_frames true \
             data/train_sp.en-${lang} exp/make_fbank/train_sp.en-${lang} ${fbankdir}
 
-        awk -v p="sp0.9-" '{printf("%s %s%s\n", $1, p, $1);}' data/train.en-${lang}/utt2spk > data/train_sp.en-${lang}/utt_map
-        utils/apply_map.pl -f 1 data/train_sp.en-${lang}/utt_map <data/train.en-${lang}/text.tc.${lang} >data/train_sp.en-${lang}/text.tc.${lang}
-        utils/apply_map.pl -f 1 data/train_sp.en-${lang}/utt_map <data/train.en-${lang}/text.lc.${lang} >data/train_sp.en-${lang}/text.lc.${lang}
-        utils/apply_map.pl -f 1 data/train_sp.en-${lang}/utt_map <data/train.en-${lang}/text.lc.rm.${lang} >data/train_sp.en-${lang}/text.lc.rm.${lang}
-        awk -v p="sp1.0-" '{printf("%s %s%s\n", $1, p, $1);}' data/train.en-${lang}/utt2spk > data/train_sp.en-${lang}/utt_map
-        utils/apply_map.pl -f 1 data/train_sp.en-${lang}/utt_map <data/train.en-${lang}/text.tc.${lang} >>data/train_sp.en-${lang}/text.tc.${lang}
-        utils/apply_map.pl -f 1 data/train_sp.en-${lang}/utt_map <data/train.en-${lang}/text.lc.${lang} >>data/train_sp.en-${lang}/text.lc.${lang}
-        utils/apply_map.pl -f 1 data/train_sp.en-${lang}/utt_map <data/train.en-${lang}/text.lc.rm.${lang} >>data/train_sp.en-${lang}/text.lc.rm.${lang}
-        awk -v p="sp1.1-" '{printf("%s %s%s\n", $1, p, $1);}' data/train.en-${lang}/utt2spk > data/train_sp.en-${lang}/utt_map
-        utils/apply_map.pl -f 1 data/train_sp.en-${lang}/utt_map <data/train.en-${lang}/text.tc.${lang} >>data/train_sp.en-${lang}/text.tc.${lang}
-        utils/apply_map.pl -f 1 data/train_sp.en-${lang}/utt_map <data/train.en-${lang}/text.lc.${lang} >>data/train_sp.en-${lang}/text.lc.${lang}
-        utils/apply_map.pl -f 1 data/train_sp.en-${lang}/utt_map <data/train.en-${lang}/text.lc.rm.${lang} >>data/train_sp.en-${lang}/text.lc.rm.${lang}
+        for lg in en ${lang}; do
+            awk -v p="sp0.9-" '{printf("%s %s%s\n", $1, p, $1);}' data/train.en-${lang}/utt2spk > data/train_sp.en-${lang}/utt_map
+            utils/apply_map.pl -f 1 data/train_sp.en-${lang}/utt_map <data/train.en-${lang}/text.tc.${lg} >data/train_sp.en-${lang}/text.tc.${lg}
+            utils/apply_map.pl -f 1 data/train_sp.en-${lang}/utt_map <data/train.en-${lang}/text.lc.${lg} >data/train_sp.en-${lang}/text.lc.${lg}
+            utils/apply_map.pl -f 1 data/train_sp.en-${lang}/utt_map <data/train.en-${lang}/text.lc.rm.${lg} >data/train_sp.en-${lang}/text.lc.rm.${lg}
+            awk -v p="sp1.0-" '{printf("%s %s%s\n", $1, p, $1);}' data/train.en-${lang}/utt2spk > data/train_sp.en-${lang}/utt_map
+            utils/apply_map.pl -f 1 data/train_sp.en-${lang}/utt_map <data/train.en-${lang}/text.tc.${lg} >>data/train_sp.en-${lang}/text.tc.${lg}
+            utils/apply_map.pl -f 1 data/train_sp.en-${lang}/utt_map <data/train.en-${lang}/text.lc.${lg} >>data/train_sp.en-${lang}/text.lc.${lg}
+            utils/apply_map.pl -f 1 data/train_sp.en-${lang}/utt_map <data/train.en-${lang}/text.lc.rm.${lg} >>data/train_sp.en-${lang}/text.lc.rm.${lg}
+            awk -v p="sp1.1-" '{printf("%s %s%s\n", $1, p, $1);}' data/train.en-${lang}/utt2spk > data/train_sp.en-${lang}/utt_map
+            utils/apply_map.pl -f 1 data/train_sp.en-${lang}/utt_map <data/train.en-${lang}/text.tc.${lg} >>data/train_sp.en-${lang}/text.tc.${lg}
+            utils/apply_map.pl -f 1 data/train_sp.en-${lang}/utt_map <data/train.en-${lang}/text.lc.${lg} >>data/train_sp.en-${lang}/text.lc.${lg}
+            utils/apply_map.pl -f 1 data/train_sp.en-${lang}/utt_map <data/train.en-${lang}/text.lc.rm.${lg} >>data/train_sp.en-${lang}/text.lc.rm.${lg}
+        done
 
         # Divide into source and target languages
         for x in train_sp.en-${lang} dev.en-${lang} tst-COMMON.en-${lang} tst-HE.en-${lang}; do
@@ -257,7 +258,9 @@ if [[ ${stage} -le 1 ]] && [[ ${stop_stage} -ge 1 ]]; then
         for x in train_sp.en-${lang} dev.en-${lang}; do
             # remove utt having more than 3000 frames
             # remove utt having more than 400 characters
-            remove_longshortdata.sh --maxframes 3000 --maxchars 400 data/${x}.${lang} data/${x}.${lang}.tmp
+            for lg in en ${lang}; do
+                remove_longshortdata.sh --maxframes 3000 --maxchars 400 data/${x}.${lg} data/${x}.${lg}.tmp
+            done
 
             # Match the number of utterances between source and target languages
             # extract common lines
@@ -265,7 +268,7 @@ if [[ ${stage} -le 1 ]] && [[ ${stop_stage} -ge 1 ]]; then
             cut -f 1 -d " " data/${x}.${lang}.tmp/text > data/${x}.${lang}.tmp/reclist2
             comm -12 data/${x}.${lang}.tmp/reclist1 data/${x}.${lang}.tmp/reclist2 > data/${x}.en.tmp/reclist
 
-            for lg in ${lang} en; do
+            for lg in en ${lang}; do
                 reduce_data_dir.sh data/${x}.${lg}.tmp data/${x}.en.tmp/reclist data/${x}.${lg}
                 utils/fix_data_dir.sh --utt_extra_files "text.tc text.lc text.lc.rm" data/${x}.${lg}
             done
@@ -273,28 +276,19 @@ if [[ ${stage} -le 1 ]] && [[ ${stop_stage} -ge 1 ]]; then
         done
 
         # compute global CMVN
-        compute-cmvn-stats scp:data/${train_set_lang}/feats.scp data/${train_set_lang}/cmvn.ark
+        compute-cmvn-stats scp:data/${train_set_lg}/feats.scp data/${train_set_lg}/cmvn.ark
 
         # dump features for training
-        if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d ${feat_tr_dir}/storage ]; then
-        utils/create_split_dir.pl \
-            /export/b{14,15,16,17}/${USER}/espnet-data/egs/must_c/st1/dump/${train_set_lang}/delta${do_delta}/storage \
-            ${feat_tr_dir}/storage
-        fi
-        if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d ${feat_dt_dir}/storage ]; then
-        utils/create_split_dir.pl \
-            /export/b{14,15,16,17}/${USER}/espnet-data/egs/must_c/st1/dump/${train_dev_lang}/delta${do_delta}/storage \
-            ${feat_dt_dir}/storage
-        fi
         dump.sh --cmd "$train_cmd" --nj 80 --do_delta $do_delta \
-            data/${train_set_lang}/feats.scp data/${train_set_lang}/cmvn.ark exp/dump_feats/${train_set_lang} ${feat_tr_dir}
+            data/${train_set_lg}/feats.scp data/${train_set_lg}/cmvn.ark exp/dump_feats/${train_set_lg} ${feat_tr_dir_lg}
         dump.sh --cmd "$train_cmd" --nj 32 --do_delta $do_delta \
-            data/${train_dev_lang}/feats.scp data/${train_set_lang}/cmvn.ark exp/dump_feats/${train_dev_lang} ${feat_dt_dir}
-        for ttask in ${trans_set}; do
+            data/${train_dev_lg}/feats.scp data/${train_set_lg}/cmvn.ark exp/dump_feats/${train_dev_lg} ${feat_dt_dir_lg}
+
+        trans_set_lg="tst-COMMON.en-${lang}.${lang} tst-HE.en-${lang}.${lang}"
+        for ttask in ${trans_set_lg}; do
             feat_trans_dir=${dumpdir}/${ttask}/delta${do_delta}; mkdir -p ${feat_trans_dir}
             dump.sh --cmd "$train_cmd" --nj 32 --do_delta $do_delta \
-                data/${ttask}/feats.scp data/${train_set_lang}/cmvn.ark exp/dump_feats/trans/${ttask} \
-                ${feat_trans_dir}
+                data/${ttask}/feats.scp data/${train_set_lg}/cmvn.ark exp/dump_feats/trans/${ttask} ${feat_trans_dir}
         done
     done
 fi
@@ -304,7 +298,7 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
     dname=${train_set}_${bpemode}${nbpe}_${tgt_case}_${suffix}${suffix_mt}
     bpemodel=data/lang_1spm/use_${dprefix}/${dname}
     nlsyms=data/lang_1spm/use_${dprefix}/${train_set}_non_lang_syms_${tgt_case}_${suffix}${suffix_mt}
-    nlsyms_tmp=data/lang_1spm/use_${dprefix}/${train_set}_non_lang_syms_tmp_${tgt_case}_${suffix}${suffix_mt}
+    nlsyms_tmp=${nlsyms}_tmp
 
     ### Task dependent. You have to check non-linguistic symbols used in the corpus.
     echo "***** stage 2: Dictionary and Json Data Preparation *****"
@@ -317,7 +311,6 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
         nlsyms=${nlsyms}.txt
         nlsyms_tmp=${nlsyms_tmp}.txt
         echo "| source and target dictionary: ${dict}"
-        echo "| source and target bpe model: ${bpemodel}.model"
 
         echo "make a non-linguistic symbol list for all languages"
         if [ -f ${nlsyms_tmp} ]; then
@@ -333,18 +326,16 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
         rm ${nlsyms_tmp}
         cat ${nlsyms}
 
-        echo "*** Make a joint source and target dictionary ***"
-        # echo "<unk> 1" > ${dict} # <unk> must be 1, 0 will be used for "blank" in CTC
-        special_symbols="<unk> 1"
+        special_symbols="<unk> 1" # <unk> must be 1, 0 will be used for "blank" in CTC
         if [[ ${use_lid} == "true" ]]; then
             i=2
             if [[ ${do_mt} == "true" ]]; then
-                all_langs=$(echo "${tgt_langs}" | tr '_' ' ') # TODO: test this
+                all_langs=$(echo "${tgt_langs}" | tr '_' ' ')
             else
                 all_langs=$(echo "${tgt_langs}_en" | tr '_' ' ')
             fi
             all_langs_sorted=$(echo ${all_langs[*]}| tr " " "\n" | sort -n | tr "\n" " ")
-            echo "all langs sorted: ${all_langs_sorted}"
+            echo "| all langs sorted: ${all_langs_sorted}"
             for lang in $(echo "${all_langs_sorted}" | tr '_' ' '); do
                 special_symbols+="; <2${lang}> ${i}"
                 i=$((i + 1))
@@ -355,7 +346,6 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
         cat ${dict}
 
         offset=$(wc -l < ${dict})
-        echo "| offset= ${offset}"
         input_path=data/lang_1spm/use_${dprefix}/input_${dprefix}_${bpemode}${nbpe}_en-${tgt_langs}_${tgt_case}_${suffix}${suffix_mt}.txt
         if [ -f ${input_path} ]; then
             echo "remove existing input text file"
@@ -368,20 +358,20 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
         done
         spm_train --user_defined_symbols="$(tr "\n" "," < ${nlsyms})" --input=${input_path} --vocab_size=${nbpe} --model_type=${bpemode} --model_prefix=${bpemodel} --input_sentence_size=100000000 --character_coverage=1.0
         spm_encode --model=${bpemodel}.model --output_format=piece < ${input_path} | tr ' ' '\n' | sort | uniq | awk -v offset=${offset} '{print $0 " " NR+offset}' >> ${dict}
-        echo "| number of tokens in dictionary: $(wc -l ${dict})"
+        echo "| Number of tokens in dictionary: $(wc -l ${dict})"
 
         echo "make json files"
         for lang in $(echo ${tgt_langs} | tr '_' ' '); do
-            train_set_lang=train_sp.en-${lang}.${lang}
-            train_dev_lang=dev.en-${lang}.${lang}
-            feat_tr_dir_lang=${dumpdir}/${train_set_lang}/delta${do_delta}
-            feat_dt_dir_lang=${dumpdir}/${train_dev_lang}/delta${do_delta}
+            train_set_lg=train_sp.en-${lang}.${lang}
+            train_dev_lg=dev.en-${lang}.${lang}
+            feat_tr_dir_lg=${dumpdir}/${train_set_lg}/delta${do_delta}
+            feat_dt_dir_lg=${dumpdir}/${train_dev_lg}/delta${do_delta}
             jname=data_${dprefix}_en-${lang}_${bpemode}${nbpe}_${tgt_case}_${suffix}${suffix_mt}.json
 
-            data2json.sh --nj 16 --feat ${feat_tr_dir_lang}/feats.scp --text data/${train_set_lang}/text.${tgt_case} --bpecode ${bpemodel}.model --lang ${lang} \
-                data/${train_set_lang} ${dict} > ${feat_tr_dir_lang}/${jname}
-            data2json.sh --feat ${feat_dt_dir_lang}/feats.scp --text data/${train_dev_lang}/text.${tgt_case} --bpecode ${bpemodel}.model --lang ${lang} \
-                data/${train_dev_lang} ${dict} > ${feat_dt_dir_lang}/${jname}
+            data2json.sh --nj 16 --feat ${feat_tr_dir_lg}/feats.scp --text data/${train_set_lg}/text.${tgt_case} --bpecode ${bpemodel}.model --lang ${lang} \
+                data/${train_set_lg} ${dict} > ${feat_tr_dir_lg}/${jname}
+            data2json.sh --feat ${feat_dt_dir_lg}/feats.scp --text data/${train_dev_lg}/text.${tgt_case} --bpecode ${bpemodel}.model --lang ${lang} \
+                data/${train_dev_lg} ${dict} > ${feat_dt_dir_lg}/${jname}
             
             trans_set_lang="tst-COMMON.en-${lang}.${lang} tst-HE.en-${lang}.${lang}"
             for ttask in ${trans_set_lang}; do
@@ -391,9 +381,8 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
             done
 
             # update json (add source references)
-            sets="${train_set_lang} ${train_dev_lang}"
-            sets+=" "${trans_set_lang}
-            for x in ${sets}; do
+            trans_sets="${train_set_lg} ${train_dev_lg} ${trans_set_lang}"
+            for x in ${trans_sets}; do
                 echo "add source references to ${x}"
                 feat_dir=${dumpdir}/${x}/delta${do_delta}
                 data_dir=data/$(echo ${x} | cut -f 1 -d ".").en-${lang}.en
@@ -422,8 +411,6 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
 
         echo "| source dictionary: ${dict_src}"
         echo "| target dictionary: ${dict_tgt}"
-        echo "| source bpe model: ${bpemodel_src}.model"
-        echo "| target bpe model: ${bpemodel_tgt}.model"
 
         # Create a joint dictionary for target languages
         echo "make a non-linguistic symbol list for target languages"
@@ -441,9 +428,6 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
         cat ${nlsyms_tgt}
 
         echo "*** Make a joint target dictionary ***"
-        # echo "<unk> 1" > ${dict} # <unk> must be 1, 0 will be used for "blank" in CTC
-        # add more special symbols for later use
-        # special_symbols="<unk> 1; <s> 2; </s> 3; <pad> 4; <TRANS> 5; <RECOG> 6; <DELAY> 7"
         special_symbols="<unk> 1"
         if [[ ${use_lid} == "true" ]]; then
             i=2
@@ -475,27 +459,26 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
 
         echo "make json files"
         for lang in $(echo ${tgt_langs} | tr '_' ' '); do
-            train_set_lang=train_sp.en-${lang}.${lang}
-            train_dev_lang=dev.en-${lang}.${lang}
-            feat_tr_dir_lang=${dumpdir}/${train_set_lang}/delta${do_delta}
-            feat_dt_dir_lang=${dumpdir}/${train_dev_lang}/delta${do_delta}
+            train_set_lg=train_sp.en-${lang}.${lang}
+            train_dev_lg=dev.en-${lang}.${lang}
+            feat_tr_dir_lg=${dumpdir}/${train_set_lg}/delta${do_delta}
+            feat_dt_dir_lg=${dumpdir}/${train_dev_lg}/delta${do_delta}
             jname=data_${dprefix}_en-${lang}_${bpemode}_src${nbpe_src}${src_case}_tgt${nbpe}${tgt_case}_${suffix}${suffix_mt}.json
 
-            data2json.sh --nj 16 --feat ${feat_tr_dir_lang}/feats.scp --text data/${train_set_lang}/text.${tgt_case} --bpecode ${bpemodel_tgt}.model --lang ${lang} \
-                data/${train_set_lang} ${dict_tgt} > ${feat_tr_dir_lang}/${jname}
-            data2json.sh --feat ${feat_dt_dir_lang}/feats.scp --text data/${train_dev_lang}/text.${tgt_case} --bpecode ${bpemodel_tgt}.model --lang ${lang} \
-                data/${train_dev_lang} ${dict_tgt} > ${feat_dt_dir_lang}/${jname}
+            data2json.sh --nj 16 --feat ${feat_tr_dir_lg}/feats.scp --text data/${train_set_lg}/text.${tgt_case} --bpecode ${bpemodel_tgt}.model --lang ${lang} \
+                data/${train_set_lg} ${dict_tgt} > ${feat_tr_dir_lg}/${jname}
+            data2json.sh --feat ${feat_dt_dir_lg}/feats.scp --text data/${train_dev_lg}/text.${tgt_case} --bpecode ${bpemodel_tgt}.model --lang ${lang} \
+                data/${train_dev_lg} ${dict_tgt} > ${feat_dt_dir_lg}/${jname}
             
-            trans_set_lang="tst-COMMON.en-${lang}.${lang} tst-HE.en-${lang}.${lang}"
-            for ttask in ${trans_set_lang}; do
+            trans_set_lg="tst-COMMON.en-${lang}.${lang} tst-HE.en-${lang}.${lang}"
+            for ttask in ${trans_set_lg}; do
                 feat_trans_dir=${dumpdir}/${ttask}/delta${do_delta}
                 data2json.sh --feat ${feat_trans_dir}/feats.scp --text data/${ttask}/text.${tgt_case} --bpecode ${bpemodel_tgt}.model --lang ${lang} \
                     data/${ttask} ${dict_tgt} > ${feat_trans_dir}/${jname}
             done
         done
 
-        # Create dictionay for English source transcription
-        # Create joint dictionary for target languages
+        # Create dictionay for English source transcription and joint dictionary for target languages
         echo "make a non-linguistic symbol list for source language"
         if [ -f ${nlsyms_tmp_src} ]; then
             echo "remove existing non-lang files"
@@ -511,11 +494,10 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
         cat ${nlsyms_src}
 
         echo "*** Make a source dictionary ***"
-        # echo "<unk> 1" > ${dict} # <unk> must be 1, 0 will be used for "blank" in CTC
         if [[ ${use_lid} == "true" ]]; then
             special_symbols="<unk> 1; <2en> 2"
             if [[ ${do_mt} == "true" ]]; then
-                special_symbols="<unk> 1" # TODO: test this
+                special_symbols="<unk> 1"
             fi
         else
             special_symbols="<unk> 1"
@@ -541,12 +523,12 @@ if [[ ${stage} -le 2 ]] && [[ ${stop_stage} -ge 2 ]]; then
 
         echo "make json files"
         for lang in $(echo ${tgt_langs} | tr '_' ' '); do
-            train_set_lang=train_sp.en-${lang}.${lang}
-            train_dev_lang=dev.en-${lang}.${lang}
+            train_set_lg=train_sp.en-${lang}.${lang}
+            train_dev_lg=dev.en-${lang}.${lang}
             trans_set_lang="tst-COMMON.en-${lang}.${lang} tst-HE.en-${lang}.${lang}"
             jname=data_${dprefix}_en-${lang}_${bpemode}_src${nbpe_src}${src_case}_tgt${nbpe}${tgt_case}_${suffix}${suffix_mt}.json
 
-            sets="${train_set_lang} ${train_dev_lang}"
+            sets="${train_set_lg} ${train_dev_lg}"
             sets+=" "${trans_set_lang}
             # update json (add source references)
             for x in ${sets}; do
@@ -585,19 +567,12 @@ fi
 expdir=${expdir}/${expname}
 tensorboard_dir=${tensorboard_dir}/${expname}
 mkdir -p ${expdir}
+mkdir -p ${tensorboard_dir}
 echo "| expdir: ${expdir}"
 echo "| tensorboard_dir: ${tensorboard_dir}"
 
-# Data folders
-datadir_tmp=${datadir}
-datadir=${datadir_tmp}/${tgt_langs}/use_${dprefix}/src${nbpe_src}_tgt${nbpe}
-if [[ ${use_multi_dict} == "true" ]]; then
-    datadir=${datadir_tmp}/de_es_fr_it_nl_pt_ro_ru/use_${dprefix}/src${nbpe_src}_tgt${nbpe}
-elif (( $lang_count == 1 )) && [[ ${train_adapters} == "true" ]]; then
-    datadir=${datadir_tmp}/${tgt_langs}_train_adapters/use_${dprefix}/src${nbpe_src}_tgt${nbpe}
-elif (( $lang_count == 1 )) && [[ ${train_adapters} == "false" ]]; then
-    datadir=${datadir}/use_lid_${use_lid}
-fi
+# path to data for training
+datadir=${datadir}/${tgt_langs}/use_${dprefix}/src${nbpe_src}_tgt${nbpe}
 
 if (( $lang_count == 1 )) && [[ ${train_adapters} == "false" ]]; then
     train_json_dir=${datadir}/train_sp/en-${tgt_langs}.json
@@ -607,18 +582,20 @@ else
     val_json_dir=${datadir}/dev
 fi
 
+dpath=data/lang_1spm/use_${dprefix}
 if [[ ${use_joint_dict} == "true" ]]; then
     dname=${train_set_dict}_${bpemode}${nbpe}_${tgt_case}_${suffix}
-    dict_tgt=${datadir}/lang_1spm/${dname}.txt
-    dict_src=${datadir}/lang_1spm/${dname}.txt
-    bpemodel_tgt=data/lang_1spm/use_${dprefix}/${dname}
-    bpemodel_src=data/lang_1spm/use_${dprefix}/${dname}
+    dict_tgt=${dpath}/${dname}.txt
+    dict_src=${dict_tgt}
+    bpemodel_tgt=${dpath}/${dname}
+    bpemodel_src=${dpath}/${dname}
 else
     dname=${train_set_dict}_${bpemode}_src${nbpe_src}${src_case}_tgt${nbpe}${tgt_case}_${suffix}
-    dict_tgt=${datadir}/lang_1spm/${dname}.tgt.txt
-    dict_src=${datadir}/lang_1spm/${dname}.src.txt
-    bpemodel_tgt=data/lang_1spm/use_${dprefix}/${dname}.tgt
-    bpemodel_src=data/lang_1spm/use_${dprefix}/${dname}.src
+    dpath=${dpath}/${dname}
+    dict_tgt=${dpath}.tgt.txt
+    dict_src=${dpath}.src.txt
+    bpemodel_tgt=${dpath}.tgt
+    bpemodel_src=${dpath}.src
 fi
 
 echo "*** Paths to training data and dictionary ***"

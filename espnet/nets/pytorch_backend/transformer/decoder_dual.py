@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Copyright 2019 Shigeki Karita
-#  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
+# Copyright 2019 Hang Le (hangtp.le@gmail.com)
 
-"""Decoder definition."""
+"""Dual-decoder definition."""
 
 import logging
 import torch
@@ -234,9 +233,3 @@ class DualDecoder(ScorerInterface, torch.nn.Module):
     def init_state(self, x=None):
         """Get an initial state for decoding."""
         return [None for i in range(len(self.dual_decoders))]
-
-    # def score(self, ys, state, x):
-    #     """Score."""
-    #     ys_mask = subsequent_mask(len(ys), device=x.device).unsqueeze(0)
-    #     logp, state = self.forward_one_step(ys.unsqueeze(0), ys_mask, x.unsqueeze(0), cache=state)
-    #     return logp.squeeze(0), state

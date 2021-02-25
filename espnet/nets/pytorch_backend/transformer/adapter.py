@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Added by Hang Le (hangtp.le@gmail.com)
 # Original code from adapter-transformers
+# https://github.com/Adapter-Hub/adapter-transformers
 
 
 """Adapter modules."""

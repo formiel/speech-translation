@@ -337,7 +337,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
             xs_pad = xs_pad + lang_embed
 
         src_mask = (~make_pad_mask(ilens.tolist())).to(xs_pad.device).unsqueeze(-2) # bs x 1 x max_ilens
-        hs_pad, hs_mask = self.encoder(xs_pad, src_mask, str(tgt_lang_ids[0].data.cpu().numpy()[0])) # hs_pad: bs x (max_ilens/4) x adim; hs_mask: bs x 1 x (max_ilens/4)
+        hs_pad, hs_mask = self.encoder(xs_pad, src_mask, str(tgt_lang_ids[0].data.cpu().numpy()[0]))
         self.hs_pad = hs_pad
 
         # 2. forward decoder
@@ -394,7 +394,7 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
             ys_zero_pad_src = pad_list(ys_src, self.pad)  # re-pad with zero
             ys_zero_pad_src = ys_zero_pad_src[:, :max(ilens_mt)]  # for data parallel
             src_mask_mt = (~make_pad_mask(ilens_mt.tolist())).to(ys_zero_pad_src.device).unsqueeze(-2)
-            # ys_zero_pad_src, ys_pad = self.target_forcing(ys_zero_pad_src, ys_pad)
+
             hs_pad_mt, hs_mask_mt = self.encoder_mt(ys_zero_pad_src, src_mask_mt)
             # forward MT decoder
             pred_pad_mt, _ = self.decoder(ys_in_pad, ys_mask, hs_pad_mt, hs_mask_mt)
@@ -442,8 +442,6 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         loss_asr_data = float(alpha * loss_ctc + (1 - alpha) * loss_asr)
         loss_mt_data = None if self.mt_weight == 0 else float(loss_mt)
         loss_st_data = float(loss_att)
-
-        # logging.info(f'loss_st_data={loss_st_data}')
 
         loss_data = float(self.loss)
         if loss_data < CTC_LOSS_THRESHOLD and not math.isnan(loss_data):
@@ -495,8 +493,6 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         assert self.do_asr, "Recognize and translate are performed simultaneously."
         assert 0 <= ratio_diverse_asr < 1
         assert 0 <= ratio_diverse_st < 1
-        logging.info(f'use_rev_triu_width: {use_rev_triu_width}')
-        logging.info(f'use_diag: {use_diag}')
 
         if self.use_lid and self.lang_tok == 'decoder-pre':
             tgt_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[-1])
@@ -522,9 +518,6 @@ class E2EDualDecoder(STInterface, torch.nn.Module):
         penalty = trans_args.penalty
         cr = math.ceil((1 - ratio_diverse_asr) * beam)
         ct = math.ceil((1 - ratio_diverse_st) * beam)
-        logging.info(f'| ratio_diverse_st = {ratio_diverse_st}')
-        logging.info(f'| ratio_diverse_asr = {ratio_diverse_asr}')
-        logging.info(f'cr = {cr}, ct = {ct}, beam = {beam}')
 
         vy = h.new_zeros(1).long()
 

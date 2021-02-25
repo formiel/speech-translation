@@ -466,8 +466,6 @@ class E2E(STInterface, torch.nn.Module):
             if self.lang_tok == "decoder-pre" and self.lang_tok_mt != "pre-src": 
                 ys_in_pad = torch.cat([tgt_lang_ids, ys_in_pad[:, 1:]], dim=1)
             ys_mask = target_mask(ys_in_pad, self.ignore_id) # bs x max_lens x max_lens
-            # logging.info(f'ys_in_pad= {ys_in_pad}')
-            # logging.info(f'ys_out_pad= {ys_out_pad}')
 
         if self.do_asr or self.do_mt:
             if self.use_lid:
@@ -478,14 +476,10 @@ class E2E(STInterface, torch.nn.Module):
             if self.lang_tok == "decoder-pre" and self.lang_tok_mt != "pre-tgt": # _v2 for mt_model_tgt
                 ys_in_pad_src = torch.cat([tgt_lang_ids_src, ys_in_pad_src[:, 1:]], dim=1) 
             ys_mask_src = target_mask(ys_in_pad_src, self.ignore_id) # bs x max_lens_src x max_lens_src
-            # logging.info(f'ys_in_pad_src= {ys_in_pad_src}')
-            # logging.info(f'ys_out_pad_src= {ys_out_pad_src}')
 
         if self.do_mt and not self.do_st:
             ys_pad_src_mt = ys_in_pad_src[:, :max(ilens)]  # for data parallel
             ys_mask_src_mt = (~make_pad_mask(ilens.tolist())).to(ys_pad_src_mt.device).unsqueeze(-2)
-            # logging.info(f'ys_pad_src_mt= {ys_pad_src_mt}')
-            # return
 
         # 1. forward encoder
         if self.do_st or self.do_asr:
@@ -583,7 +577,7 @@ class E2E(STInterface, torch.nn.Module):
                 ys_zero_pad_src = pad_list(ys_src, self.pad)  # re-pad with zero
                 ys_zero_pad_src = ys_zero_pad_src[:, :max(ilens_mt)]  # for data parallel
                 src_mask_mt = (~make_pad_mask(ilens_mt.tolist())).to(ys_zero_pad_src.device).unsqueeze(-2)
-                # ys_zero_pad_src, ys_pad = self.target_forcing(ys_zero_pad_src, ys_pad)
+
                 hs_pad_mt, hs_mask_mt = self.encoder_mt(ys_zero_pad_src, src_mask_mt)
                 # forward MT decoder
                 pred_pad_mt, _ = self.decoder(ys_in_pad, ys_mask, hs_pad_mt, hs_mask_mt)
@@ -889,8 +883,7 @@ class E2E(STInterface, torch.nn.Module):
         if self.use_lid and self.lang_tok == 'decoder-pre':
             if self.lang_tok_mt is None or self.lang_tok_mt == "pre-tgt":
                 tgt_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[-1])
-                # src_lang_id = '<2{}>'.format(trans_args.config.split('.')[-2].split('-')[0])
-                src_lang_id = self.sos_src # _v2
+                src_lang_id = self.sos_src
                 y = char_list.index(tgt_lang_id)
             elif self.lang_tok_mt == "pre-src":
                 tgt_lang_id = self.sos_tgt
@@ -948,7 +941,6 @@ class E2E(STInterface, torch.nn.Module):
 
                 # get nbest local scores and their ids
                 ys_mask = subsequent_mask(i + 1).unsqueeze(0)
-                # logging.info(f'i: {i} -- mask = {ys_mask}')
                 ys = torch.tensor(hyp['yseq']).unsqueeze(0)
                 # FIXME: jit does not match non-jit result
                 if use_jit:
@@ -1284,7 +1276,7 @@ class E2E(STInterface, torch.nn.Module):
         # check number of hypotheis
         if len(nbest_hyps) == 0 or len(nbest_hyps_asr) == 0:
             logging.warning('there is no N-best results, perform recognition again with smaller minlenratio.')
-            # should copy becasuse Namespace will be overwritten globally
+            # should copy because Namespace will be overwritten globally
             trans_args = Namespace(**vars(trans_args))
             trans_args.minlenratio = max(0.0, trans_args.minlenratio - 0.1)
             return self.recognize_and_translate(x, trans_args, char_list_tgt, char_list_src, rnnlm, use_jit)
@@ -1542,8 +1534,7 @@ class E2E(STInterface, torch.nn.Module):
                         if i >= self.wait_k_asr:
                             new_hyp['yseq'][len(hyp['yseq'])] = self.eos_tgt
                         else:
-                            new_hyp['yseq'] = hyp['yseq'] # v3
-                            # new_hyp['yseq'][len(hyp['yseq'])] = char_list.index(tgt_lang_id) if self.one_to_many and self.lang_tok == 'decoder-pre' else self.sos # v2
+                            new_hyp['yseq'] = hyp['yseq']
                     
                     if local_att_scores_asr is not None:
                         new_hyp['yseq_asr'][len(hyp['yseq_asr'])] = int(local_best_ids_asr[j])
@@ -1551,8 +1542,7 @@ class E2E(STInterface, torch.nn.Module):
                         if i >= self.wait_k_st:
                             new_hyp['yseq_asr'][len(hyp['yseq_asr'])] = self.eos_src
                         else:
-                            new_hyp['yseq_asr'] = hyp['yseq_asr'] # v3
-                            # new_hyp['yseq_asr'][len(hyp['yseq_asr'])] = char_list.index(src_lang_id) if self.one_to_many and self.lang_tok == 'decoder-pre' else self.sos # v2
+                            new_hyp['yseq_asr'] = hyp['yseq_asr']
 
                     hyps_best_kept.append(new_hyp)
 

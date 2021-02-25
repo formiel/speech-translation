@@ -268,11 +268,11 @@ def get_parser(parser=None, required=True):
                         help='Use adapters for transcription.')
     parser.add_argument('--use-adapters-in-enc', default=False, type=strtobool,
                         help='Use adapters in encoder.')
-    parser.add_argument('--removed-langs', default=None, type=str,
-                        help='Language to be excluded in training.')
-    parser.add_argument('--lang-pairs-dict', default="en-de,en-es,en-fr,en-it,en-nl,en-pt,en-ro,en-ru", 
-                        type=str, help='Language to be excluded in training.')
-    # Dual attention related
+    # parser.add_argument('--removed-langs', default=None, type=str,
+    #                     help='Languages to be excluded in training.')
+    # parser.add_argument('--lang-pairs-dict', default="en-de,en-es,en-fr,en-it,en-nl,en-pt,en-ro,en-ru", 
+    #                     type=str, help='Language pairs to be used in training.')
+    # Dual attention layer
     parser.add_argument('--cross-weight', default=0.0, type=float,
                         help='Weight decay ratio')
     parser.add_argument('--cross-weight-learnable', default=False, type=strtobool,

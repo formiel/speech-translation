@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+# Modified by Hang Le
+# The original copyright is appended below
+# ---
 # Copyright 2019 Shigeki Karita
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
+
 
 """Decoder definition."""
 
@@ -107,30 +111,6 @@ class Decoder(ScorerInterface, torch.nn.Module):
                 raise NotImplementedError
         
         self.adapter_names = adapter_names
-        # self.decoders = repeat(
-        #     num_blocks,
-        #     lambda: DecoderLayer(
-        #         attention_dim,
-        #         MultiHeadedAttention(
-        #             attention_heads, attention_dim, self_attention_dropout_rate),
-        #         MultiHeadedAttention(
-        #             attention_heads, attention_dim, src_attention_dropout_rate),
-        #         PositionwiseFeedForward(attention_dim, linear_units, dropout_rate),
-        #         dropout_rate,
-        #         normalize_before,
-        #         concat_after,
-        #         cross_self_attn=MultiHeadedAttention(
-        #             attention_heads, attention_dim, self_attention_dropout_rate) if cross_self_attn else None,
-        #         cross_src_attn=MultiHeadedAttention(
-        #             attention_heads, attention_dim, self_attention_dropout_rate) if cross_src_attn else None,
-        #         cross_operator=cross_operator,
-        #         cross_shared=cross_shared,
-        #         cross_weight_learnable=cross_weight_learnable,
-        #         cross_weight=cross_weight,
-        #         adapters=nn.ModuleDict({k: Adapter(attention_dim, int(attention_dim/reduction_factor))
-        #                                             for k in adapter_names}) if adapter_names else None,
-        #     )
-        # )
         decoder_layer = DecoderLayer(
                 attention_dim,
                 MultiHeadedAttention(

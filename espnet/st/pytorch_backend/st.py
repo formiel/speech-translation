@@ -210,7 +210,7 @@ class TimeLimitTrigger(object):
             bool: ``True`` if the training loop should be stopped.
         """
         if self._max_trigger(trainer):
-            print(f'Training has reached specified number of epochs: {self.max_epochs}.')
+            logging.info(f'Training has reached specified number of epochs: {self.max_epochs}.')
             return True
         
         if self._interval_trigger(trainer):
@@ -357,24 +357,23 @@ def train(args):
         logging.warning('cuda is not available')
 
     # language pairs
-    removed_langs = getattr(args, "removed_langs", None)
-    lang_pairs_dict = getattr(args, "lang_pairs_dict")
-    if removed_langs is not None:
-        removed_langs = removed_langs.split("_")
-        removed_langs = [f"en-{l}" for l in removed_langs]
-        lang_pairs_dict = lang_pairs_dict.split(",")
-        lang_pairs_dict = ",".join(list(set(lang_pairs_dict) - set(removed_langs)))
-    lang_pairs = args.lang_pairs if (not args.train_adapters and 
-                                not args.use_multi_dict and not removed_langs) \
-                                else lang_pairs_dict
-    lang_pairs = sorted(lang_pairs.split(','))
+    # removed_langs = getattr(args, "removed_langs", None)
+    # lang_pairs_dict = getattr(args, "lang_pairs_dict")
+    # if removed_langs is not None:
+    #     removed_langs = removed_langs.split("_")
+    #     removed_langs = [f"en-{l}" for l in removed_langs]
+    #     lang_pairs_dict = lang_pairs_dict.split(",")
+    #     lang_pairs_dict = ",".join(list(set(lang_pairs_dict) - set(removed_langs)))
+    # lang_pairs = args.lang_pairs if (not args.train_adapters and 
+    #                             not args.use_multi_dict and not removed_langs) \
+    #                             else lang_pairs_dict
+    lang_pairs = sorted(args.lang_pairs.split(','))
     args.one_to_many = True if len(lang_pairs) > 1 else False
     if args.one_to_many:
         assert args.use_lid
     tgt_langs = sorted([p.split('-')[-1] for p in lang_pairs])
     src_lang = lang_pairs[0].split('-')[0]
     args.src_lang = src_lang
-    logging.info(f'args.src_lang = {src_lang}')
     
     # get paths to data
     if args.one_to_many and not args.use_multi_dict:
@@ -386,9 +385,7 @@ def train(args):
                 and fname.split(".")[0] in args.lang_pairs.split(",")]
     else:
         train_jpaths = [args.train_json]
-        valid_jpaths = [args.valid_json]
-    logging.info(f'| train json paths: {train_jpaths}')
-    logging.info(f'| valid json jpaths: {valid_jpaths}')   
+        valid_jpaths = [args.valid_json]   
 
     # prepare language ID tokens for one-to-many systems 
     if args.use_lid:
@@ -412,8 +409,6 @@ def train(args):
     else:
         args.langs_dict_tgt = None
         args.langs_dict_src = None
-    logging.info(f'| langs_dict_tgt: {args.langs_dict_tgt}')
-    logging.info(f'| langs_dict_src: {args.langs_dict_src}')
 
     # get input and output dimension info 
     idims = []
@@ -452,10 +447,7 @@ def train(args):
         args.adapters = None
     if args.use_adapters:
         args.homogeneous_batch = True
-    logging.info(f'| lang_pairs: {lang_pairs}')
-    logging.info(f'| homogeneous_batch: {args.homogeneous_batch}')
-    logging.info(f'| args.adapters: {args.adapters}')
-    
+
     # Initialize with pre-trained ASR encoder and MT decoder
     if args.enc_init is not None or args.dec_init is not None:
         logging.info('Loading pretrained encoder and/or decoder ...')
@@ -475,7 +467,6 @@ def train(args):
     logging.info(f'| Number of parameters: {num_params}')
 
     subsampling_factor = model.subsample[0]
-    logging.info(f'subsampling_factor = {subsampling_factor}')
 
     if args.rnnlm is not None:
         rnnlm_args = get_model_conf(args.rnnlm, args.rnnlm_conf)
@@ -490,8 +481,6 @@ def train(args):
 
     args.do_mt = getattr(args, "mt_weight", 0.0) > 0.0
     use_sortagrad = args.sortagrad == -1 or args.sortagrad > 0
-    logging.info(f'ARGS: do_mt: {args.do_mt}')
-    logging.info(f'use_sortagrad: {use_sortagrad}')
 
     # write model config
     if not os.path.exists(args.outdir):

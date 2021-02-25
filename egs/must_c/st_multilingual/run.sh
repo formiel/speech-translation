@@ -628,37 +628,25 @@ if [[ ${stage} -le 4 ]] && [[ ${stop_stage} -ge 4 ]]; then
     # Run training
     ${cuda_cmd} --gpu ${ngpu} ${expdir}/train.log \
         st_train.py \
-        --lang-pairs ${lang_pairs} \
-        --config ${train_config} \
-        --preprocess-conf ${preprocess_config} \
-        --ngpu ${ngpu} \
-        --backend ${backend} \
-        --outdir ${expdir}/results \
-        --tensorboard-dir ${tensorboard_dir} \
-        --debugmode ${debugmode} \
-        --dict-src ${dict_src} \
-        --dict-tgt ${dict_tgt} \
-        --debugdir ${expdir} \
-        --minibatches ${N} \
-        --seed ${seed} \
-        --verbose ${verbose} \
-        --resume $resume \
-        --train-json ${train_json_dir} \
-        --valid-json ${val_json_dir} \
-        --early-stop-criterion ${early_stop_criterion} \
-        --use-lid ${use_lid} \
-        --do-st ${do_st} \
-        --report-bleu \
-        --init-from-decoder-asr ${init_from_decoder_asr} \
-        --init-from-decoder-mt ${init_from_decoder_mt} \
-        --use-adapters ${use_adapters} \
-        --train-adapters ${train_adapters} \
-        --use-multi-dict ${use_multi_dict} \
-        --use-adapters-for-asr ${use_adapters_for_asr} \
-        --use-adapters-in-enc ${use_adapters_in_enc}
-        # --enc-init ${asr_model} \
-        # --dec-init ${st_model}
-    
+                --lang-pairs ${lang_pairs} \
+                --config ${train_config} \
+                --preprocess-conf ${preprocess_config} \
+                --ngpu ${ngpu} \
+                --backend ${backend} \
+                --outdir ${expdir}/results \
+                --tensorboard-dir ${tensorboard_dir} \
+                --debugmode ${debugmode} \
+                --dict-src ${dict_src} \
+                --dict-tgt ${dict_tgt} \
+                --debugdir ${expdir} \
+                --minibatches ${N} \
+                --seed ${seed} \
+                --verbose ${verbose} \
+                --resume ${resume} \
+                --train-json ${train_json_dir} \
+                --valid-json ${val_json_dir} \
+                --use-lid ${use_lid}
+
     echo "Log output is saved in ${expdir}/train.log"
 fi
 

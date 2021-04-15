@@ -18,6 +18,150 @@ This is the codebase for the paper [*Dual-decoder Transformer for Joint Automati
 # 1. Pre-trained models
 Pre-trained models are available for download in the links below. This table shows the performance on the MuST-C test set. To replicate the results, please follow [Section 5 Decoding](#5-decoding).
 
+<table>
+    <thead>
+      <tr>
+        <th></th>
+        <th>type</th>
+        <th>side</th>
+        <th>self</th>
+        <th>src</th>
+        <th>merge</th>
+        <th>epochs</th>
+        <th>WER</th>
+        <th>BLEU</th>
+        <th>de</th>
+        <th>es</th>
+        <th>fr</th>
+        <th>it</th>
+        <th>nl</th>
+        <th>pt</th>
+        <th>ro</th>
+        <th>ru</th>
+      </tr>
+      <tbody>
+        <tr>
+            <td><td colspan=5>Inaguma et al. [1]</td>
+            <td>50</td>
+            <td>12.0</td>
+            <td>25.05</td>
+            <td>22.91</td>
+            <td>27.96</td>
+            <td>32.69</td>
+            <td>23.75</td>
+            <td>27.43</td>
+            <td>28.01</td>
+            <td>21.90</td>
+            <td><b>15.75</td>
+       </tr>
+       <tr>
+            <td><td colspan=5>Gangi et al. [2]</td>
+            <td></td>
+            <td>-</td>
+            <td>-</td>
+            <td>17.70</td>
+            <td>20.90</td>
+            <td>26.50</td>
+            <td>18.00</td>
+            <td>20.00</td>
+            <td>22.60</td>
+            <td>-</td>
+            <td>-</td>
+       </tr>
+       <tr>
+            <td><td colspan=5>Gangi et al. [2]</td>
+            <td></td>
+            <td>-</td>
+            <td>17.55</td>
+            <td>16.50</td>
+            <td>18.90</td>
+            <td>24.50</td>
+            <td>16.20</td>
+            <td>17.80</td>
+            <td>20.80</td>
+            <td>15.90</td>
+            <td>9.80</td>
+       </tr>
+       <tr>
+            <td><a href=https://zenodo.org/record/4563217/files/dict1_bpe8k_independent_plus2.tar.gz?download=1>Link</a></td>
+            <td>independent++</td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td>25</td>
+            <td>11.6</td>
+            <td>24.60</td>
+            <td>22.82</td>
+            <td>27.20</td>
+            <td>32.11</td>
+            <td>23.34</td>
+            <td>26.67</td>
+            <td>28.98</td>
+            <td>21.37</td>
+            <td>14.34</td>
+       </tr>
+       <tr>
+            <td><a href=https://zenodo.org/record/4563217/files/dict1_bpe8k_dual_decoder_xself_xsrc_xconcat.tar.gz?download=1>Link</a></td>
+            <td>par</td>
+            <td>both</td>
+            <td>:heavy_check_mark:</td>
+            <td>:heavy_check_mark:</td>
+            <td>concat</td>
+            <td>25</td>
+            <td>11.6</td>
+            <td>25.00</td>
+            <td>22.74</td>
+            <td>27.59</td>
+            <td>32.86</td>
+            <td>23.50</td>
+            <td>26.97</td>
+            <td>29.51</td>
+            <td>21.94</td>
+            <td>14.88</td>
+       </tr>
+       <tr>
+            <td><a href=https://zenodo.org/record/4563217/files/dict1_bpe8k_dual_decoder_xsrc_xsum_waitk_asr3.tar.gz?download=1>Link</a></td>
+            <td>par<sup>R3</sup></td>
+            <td>both</td>
+            <td>-</td>
+            <td>:heavy_check_mark:</td>
+            <td>sum</td>
+            <td>25</td>
+            <td>11.6</td>
+            <td>24.87</td>
+            <td>22.84</td>
+            <td>27.92</td>
+            <td>32.12</td>
+            <td>23.61</td>
+            <td>27.29</td>
+            <td>29.48</td>
+            <td>21.16</td>
+            <td>14.50</td>
+       </tr>
+       <tr>
+            <td><a href=https://zenodo.org/record/4563217/files/dict1_bpe8k_dual_decoder_xsrc_xsum_plus2.tar.gz?download=1>Link</a></td>
+            <td>par++</td>
+            <td>both</td>
+            <td>-</td>
+            <td>:heavy_check_mark:</td>
+            <td>sum</td>
+            <td>25</td>
+            <td><b>11.4</td>
+            <td><b>25.62</td>
+            <td><b>23.63</td>
+            <td><b>28.12</td>
+            <td><b>33.45</td>
+            <td><b>24.18</td>
+            <td><b>27.55</td>
+            <td><b>29.95</td>
+            <td><b>22.87</td>
+            <td>15.21</td>
+       </tr>
+  </tbody>
+</table>
+
+<!--
 |   |  type | side  | self  | src  | merge | epochs |  WER | BLEU | de | es | fr | it | nl | pt | ro | ru |
 |---|:---|:---|:---|:---|:---|:---|:---|---|---|---|---|---|---|---|---|---|
 |  <td colspan=5>Inaguma et al. [1]| 50 | 12.0| 25.05 | 22.91 | 27.96 | 32.69 | 23.75 | 27.43 | 28.01 | 21.90 | **15.75** |
@@ -26,7 +170,7 @@ Pre-trained models are available for download in the links below. This table sho
 |[Link](https://zenodo.org/record/4563217/files/dict1_bpe8k_independent_plus2.tar.gz?download=1)| `independent++` ||||| 25 | 11.6 | 24.60 | 22.82 |27.20 |32.11 |23.34 |26.67 |28.98 |21.37 |14.34 |
 |[Link](https://zenodo.org/record/4563217/files/dict1_bpe8k_dual_decoder_xself_xsrc_xconcat.tar.gz?download=1)| `par` | `both` | :heavy_check_mark: | :heavy_check_mark: | `concat` | 25 | 11.6 | 25.00 | 22.74 |27.59 |32.86 |23.50 |26.97 |29.51 |21.94 |14.88 |    
 |[Link](https://zenodo.org/record/4563217/files/dict1_bpe8k_dual_decoder_xsrc_xsum_waitk_asr3.tar.gz?download=1)| `par`<sup>`R3`</sup> | `both` | - | :heavy_check_mark: | `sum` | 25 | 11.6 | 24.87 |  22.84 |27.92 |32.12 |23.61 |27.29 |29.48 |21.16 |14.50 | 
-|[Link](https://zenodo.org/record/4563217/files/dict1_bpe8k_dual_decoder_xsrc_xsum_plus2.tar.gz?download=1)| `par++` | `both` | - | :heavy_check_mark: | `sum` | 25 | **11.4**| **25.62** | **23.63** |**28.12** |**33.45** |**24.18** |**27.55** |**29.95** |**22.87** |15.21 |
+|[Link](https://zenodo.org/record/4563217/files/dict1_bpe8k_dual_decoder_xsrc_xsum_plus2.tar.gz?download=1)| `par++` | `both` | - | :heavy_check_mark: | `sum` | 25 | **11.4**| **25.62** | **23.63** |**28.12** |**33.45** |**24.18** |**27.55** |**29.95** |**22.87** |15.21 |-->
 
 [1] Inaguma et al., 2020. Espnet-st: All-in-one speech translation toolkit. (Bilingual one-to-one models)
 
